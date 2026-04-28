@@ -222,6 +222,21 @@ CRYPTO_OHLCV = _table(
     primary_key=("venue", "symbol", "interval", "open_time_ns"),
 )
 
+CRYPTO_DERIVATIVES = _table(
+    name="crypto_derivatives",
+    extra_fields=[
+        pa.field("venue", pa.string(), nullable=False),
+        pa.field("record_type", pa.string(), nullable=False),
+        pa.field("symbol", pa.string(), nullable=False),
+        pa.field("funding_time_ns", pa.int64(), nullable=True),
+        pa.field("funding_rate", pa.float64(), nullable=True),
+        pa.field("mark_price", pa.float64(), nullable=True),
+        pa.field("spot_price", pa.float64(), nullable=True),
+        pa.field("basis_pct", pa.float64(), nullable=True),
+    ],
+    primary_key=("venue", "record_type", "symbol", "event_time_ns"),
+)
+
 
 ALL_TABLES: dict[str, TableSchema] = {
     POLYMARKET_GAMMA_EVENTS.name: POLYMARKET_GAMMA_EVENTS,
@@ -231,4 +246,5 @@ ALL_TABLES: dict[str, TableSchema] = {
     STOCK_OHLCV.name: STOCK_OHLCV,
     MACRO_SERIES.name: MACRO_SERIES,
     CRYPTO_OHLCV.name: CRYPTO_OHLCV,
+    CRYPTO_DERIVATIVES.name: CRYPTO_DERIVATIVES,
 }

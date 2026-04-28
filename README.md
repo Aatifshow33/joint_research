@@ -29,6 +29,8 @@ pytest
 
 # First ingestion (live API call, ~10s):
 joint-research ingest gamma-events --limit 100
+joint-research ingest crypto-ohlcv --symbol BTCUSDT --interval 1h --start -30d
+joint-research ingest crypto-derivatives --symbols BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT --limit 24
 duckdb data/warehouse/manifest.duckdb -c "select count(*) from polymarket_gamma_events"
 ```
 

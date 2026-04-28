@@ -287,12 +287,20 @@ def _load_feature_inputs(
           r.volume_quote,
           a.crypto_log_return_next_1h,
           a.crypto_log_return_next_4h,
-          a.crypto_log_return_next_24h
+          a.crypto_log_return_next_24h,
+          d.funding_rate,
+          d.basis_pct,
+          d.funding_regime,
+          d.funding_intensity,
+          d.basis_regime
         FROM crypto_polymarket_aligned a
         LEFT JOIN crypto_returns r
           ON r.symbol = a.asset || 'USDT'
          AND r.interval = '1h'
          AND r.open_time_ns = a.open_time_ns
+        LEFT JOIN crypto_derivatives_regime d
+          ON d.symbol = a.asset || 'USDT'
+         AND d.event_time_ns = a.open_time_ns
         WHERE a.asset = ?
           AND a.market_id = ?
           AND a.token_id = ?
@@ -317,6 +325,11 @@ def _load_feature_inputs(
             forward_return_1h=float(row[10]) if row[10] is not None else None,
             forward_return_4h=float(row[11]) if row[11] is not None else None,
             forward_return_24h=float(row[12]) if row[12] is not None else None,
+            funding_rate=float(row[13]) if row[13] is not None else None,
+            basis_pct=float(row[14]) if row[14] is not None else None,
+            funding_regime=row[15],
+            funding_intensity=row[16],
+            basis_regime=row[17],
         )
         for row in rows
     ]

@@ -115,6 +115,42 @@ def ingest_crypto_ohlcv(
     )
 
 
+@ingest_app.command("crypto-derivatives")
+def ingest_crypto_derivatives(
+    symbols: str = typer.Option(
+        "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT",
+        help="Comma-separated Binance symbols.",
+    ),
+    limit: int = typer.Option(24, help="Funding rows per symbol."),
+    warehouse_root: Path = typer.Option(None),
+) -> None:
+    """Pull public/no-auth funding and perp-basis inputs into the warehouse."""
+
+    from joint_research.ingest.crypto_derivatives import fetch_derivatives_rows  # noqa: PLC0415
+    from joint_research.warehouse import CRYPTO_DERIVATIVES, ParquetWriter  # noqa: PLC0415
+
+    paths = _resolve_paths(warehouse_root)
+    symbol_list = tuple(s.strip().upper() for s in symbols.split(",") if s.strip())
+    result = asyncio.run(fetch_derivatives_rows(symbols=symbol_list, limit=limit))
+    if not result.rows:
+        typer.echo(
+            f"ingested=0 symbols={','.join(symbol_list)} errors={len(result.errors)}. "
+            "nothing written."
+        )
+        for error in result.errors:
+            typer.echo(f"  warning={error}")
+        raise typer.Exit(code=0)
+    shard = ParquetWriter(table=CRYPTO_DERIVATIVES, paths=paths).write(
+        [row.to_warehouse_row() for row in result.rows]
+    )
+    typer.echo(
+        f"ingested={len(result.rows)} symbols={','.join(symbol_list)} "
+        f"errors={len(result.errors)} shard={shard}"
+    )
+    for error in result.errors:
+        typer.echo(f"  warning={error}")
+
+
 @ingest_app.command("gamma-crypto-markets")
 def ingest_gamma_crypto_markets(
     limit: int = typer.Option(500, help="Max markets to fetch from Gamma."),

@@ -118,6 +118,97 @@ def _register_analytic_views(con: duckdb.DuckDBPyConnection) -> None:
         """
     )
 
+    con.execute(
+        """
+        CREATE OR REPLACE VIEW crypto_funding_rates AS
+        SELECT
+          venue,
+          symbol,
+          event_time_ns,
+          funding_time_ns,
+          funding_rate,
+          mark_price,
+          source,
+          payload_hash,
+          payload_json
+        FROM crypto_derivatives
+        WHERE record_type = 'funding_rate'
+        """
+    )
+
+    con.execute(
+        """
+        CREATE OR REPLACE VIEW crypto_perp_basis AS
+        SELECT
+          venue,
+          symbol,
+          event_time_ns,
+          mark_price AS perp_mark_price,
+          spot_price,
+          basis_pct,
+          source,
+          payload_hash,
+          payload_json
+        FROM crypto_derivatives
+        WHERE record_type = 'perp_basis'
+        """
+    )
+
+    con.execute(
+        """
+        CREATE OR REPLACE VIEW crypto_derivatives_regime AS
+        WITH funding AS (
+          SELECT
+            venue,
+            symbol,
+            event_time_ns,
+            funding_rate,
+            mark_price AS funding_mark_price
+          FROM crypto_funding_rates
+        ),
+        basis AS (
+          SELECT
+            venue,
+            symbol,
+            event_time_ns,
+            perp_mark_price,
+            spot_price,
+            basis_pct
+          FROM crypto_perp_basis
+        )
+        SELECT
+          coalesce(f.venue, b.venue) AS venue,
+          coalesce(f.symbol, b.symbol) AS symbol,
+          coalesce(f.event_time_ns, b.event_time_ns) AS event_time_ns,
+          f.funding_rate,
+          b.perp_mark_price,
+          b.spot_price,
+          b.basis_pct,
+          CASE
+            WHEN f.funding_rate IS NULL THEN 'unknown_funding'
+            WHEN f.funding_rate > 0 THEN 'positive_funding'
+            WHEN f.funding_rate < 0 THEN 'negative_funding'
+            ELSE 'neutral_funding'
+          END AS funding_regime,
+          CASE
+            WHEN f.funding_rate IS NULL THEN 'unknown_funding'
+            WHEN f.funding_rate >= 0.0001 THEN 'high_funding'
+            ELSE 'low_normal_funding'
+          END AS funding_intensity,
+          CASE
+            WHEN b.basis_pct IS NULL THEN 'unknown_basis'
+            WHEN b.basis_pct > 0 THEN 'perp_premium'
+            WHEN b.basis_pct < 0 THEN 'perp_discount'
+            ELSE 'flat_basis'
+          END AS basis_regime
+        FROM funding f
+        FULL OUTER JOIN basis b
+          ON f.venue = b.venue
+         AND f.symbol = b.symbol
+         AND f.event_time_ns = b.event_time_ns
+        """
+    )
+
     # Crypto-relevant Polymarket events. We pick by category and by keywords
     # in title/slug — defensive because Gamma's "category" field is often null.
     con.execute(

@@ -26,6 +26,11 @@ class FeatureInput:
     forward_return_1h: float | None
     forward_return_4h: float | None
     forward_return_24h: float | None
+    funding_rate: float | None = None
+    basis_pct: float | None = None
+    funding_regime: str | None = None
+    funding_intensity: str | None = None
+    basis_regime: str | None = None
 
 
 @dataclass(frozen=True)
@@ -55,6 +60,11 @@ class FeatureRow:
     reversal_regime: str
     large_crypto_move: bool
     volume_spike: bool
+    funding_rate: float | None
+    basis_pct: float | None
+    funding_regime: str
+    funding_intensity: str
+    basis_regime: str
     probability_crypto_divergence: float
     probability_confirms_crypto_momentum: bool
     probability_opposes_crypto_momentum: bool
@@ -127,6 +137,11 @@ def build_feature_rows(
                 reversal_regime=reversal_regime,
                 large_crypto_move=abs(crypto_return_1h) >= large_crypto_move_threshold,
                 volume_spike=_volume_spike(ordered, idx),
+                funding_rate=row.funding_rate,
+                basis_pct=row.basis_pct,
+                funding_regime=row.funding_regime or "unknown_funding",
+                funding_intensity=row.funding_intensity or "unknown_funding",
+                basis_regime=row.basis_regime or "unknown_basis",
                 probability_crypto_divergence=divergence,
                 probability_confirms_crypto_momentum=confirms,
                 probability_opposes_crypto_momentum=opposes,
