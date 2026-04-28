@@ -17,6 +17,18 @@ from joint_research.research.lead_lag import (
     write_lead_lag_report,
     write_pattern_catalog,
 )
+from joint_research.research.robustness import (
+    CandidateGrade,
+    RobustnessObservation,
+    RobustnessReportPaths,
+    RobustnessResult,
+    apply_quality_filter,
+    grade_candidate,
+    permutation_baseline,
+    run_robustness_study,
+    split_train_test,
+    write_robustness_report,
+)
 
 __all__ = [
     "EventStudyCell",
@@ -25,13 +37,23 @@ __all__ = [
     "LeadLagCandidate",
     "LeadLagReportPaths",
     "LeadLagTokenResult",
+    "CandidateGrade",
+    "RobustnessObservation",
+    "RobustnessReportPaths",
+    "RobustnessResult",
+    "apply_quality_filter",
     "benjamini_hochberg_significant",
     "classify_trade_direction",
+    "grade_candidate",
     "pearson_correlation_with_tstat",
+    "permutation_baseline",
     "rank_signal_candidates",
     "run_event_study",
     "run_lead_lag_study",
+    "run_robustness_study",
+    "split_train_test",
     "write_event_study_catalog",
     "write_lead_lag_report",
     "write_pattern_catalog",
+    "write_robustness_report",
 ]

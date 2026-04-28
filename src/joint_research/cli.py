@@ -248,6 +248,91 @@ def research_lead_lag(
         )
 
 
+@research_app.command("robustness")
+def research_robustness(
+    min_observations: int = typer.Option(60, help="Minimum aligned bars per market/horizon."),
+    min_nonzero_changes: int = typer.Option(
+        20,
+        help="Minimum non-zero Polymarket probability changes.",
+    ),
+    max_flat_fraction: float = typer.Option(
+        0.90,
+        help="Reject markets with a higher fraction of zero probability changes.",
+    ),
+    min_days_to_resolution: float = typer.Option(
+        3.0,
+        help="Reject markets whose last aligned sample is this close to resolution.",
+    ),
+    train_fraction: float = typer.Option(0.60, help="Earlier fraction used as train/discovery."),
+    n_permutations: int = typer.Option(200, help="Deterministic shuffles per market/horizon."),
+    output_dir: Path = typer.Option(
+        Path("artifacts/research/robustness"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for robustness_summary.md, robustness_results.csv, "
+            "and robustness_candidates.json."
+        ),
+    ),
+    show_top: int = typer.Option(10, help="Print the top-N robustness candidates."),
+    warehouse_root: Path = typer.Option(None),
+) -> None:
+    """Run paper-only robustness checks over Polymarket→crypto candidates."""
+
+    from joint_research.research.robustness import (  # noqa: PLC0415
+        CandidateGrade,
+        run_robustness_study,
+        write_robustness_report,
+    )
+
+    paths = _resolve_paths(warehouse_root)
+    results = run_robustness_study(
+        paths=paths,
+        min_observations=min_observations,
+        min_nonzero_changes=min_nonzero_changes,
+        max_flat_fraction=max_flat_fraction,
+        min_days_to_resolution=min_days_to_resolution,
+        train_fraction=train_fraction,
+        n_permutations=n_permutations,
+    )
+    report_paths = write_robustness_report(
+        output_dir=output_dir.resolve(),
+        results=results,
+    )
+
+    counts = {grade.value: sum(1 for r in results if r.grade is grade) for grade in CandidateGrade}
+    typer.echo(
+        "EXPLORATORY ONLY - NOT TRADEABLE\n"
+        f"hypothesis_rows={len(results)} "
+        f"promising={counts['PROMISING']} "
+        f"watchlist={counts['WATCHLIST']} "
+        f"weak={counts['WEAK']} "
+        f"rejected={counts['REJECTED']}"
+    )
+    typer.echo(f"summary={report_paths.summary_md}")
+    typer.echo(f"results_csv={report_paths.results_csv}")
+    typer.echo(f"candidates_json={report_paths.candidates_json}")
+
+    candidates = [r for r in results if r.grade is not CandidateGrade.REJECTED][:show_top]
+    if not candidates:
+        typer.echo("no robustness candidates survived beyond REJECTED.")
+        raise typer.Exit(code=0)
+
+    typer.echo(f"\ntop {show_top} robustness candidates:")
+    for r in candidates:
+        oos_match = (
+            r.train_correlation * r.test_correlation > 0
+            if not (math.isnan(r.train_correlation) or math.isnan(r.test_correlation))
+            else False
+        )
+        typer.echo(
+            f"  rank={r.rank:>2} grade={r.grade.value:<9} asset={r.asset:>4} "
+            f"lag={r.lag_hours:>2}h oos_match={oos_match} "
+            f"emp_p={r.empirical_pvalue:.4f} stability={r.rolling_stability:.2f} "
+            f"n={r.n_observations} market={r.market_slug or r.market_id}"
+        )
+
+
 @ingest_app.command("wallet-activity")
 def ingest_wallet_activity(
     limit: int = typer.Option(50, help="Top-N wallets to discover and pull activity for."),
