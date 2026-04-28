@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+dist/
+build/
+
+# Warehouse data — never commit market data
+data/warehouse/
+data/cache/
+*.parquet
+*.duckdb
+*.duckdb.wal
+
+# Notebooks scratch
+.ipynb_checkpoints/
