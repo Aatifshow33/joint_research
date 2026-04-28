@@ -240,7 +240,8 @@ def _register_analytic_views(con: duckdb.DuckDBPyConnection) -> None:
             pct_rank_1y,
             pct_rank_5y,
             change_1d,
-            change_5d
+            change_5d,
+            change_1m
           FROM macro_series_with_percentiles
         ),
         pivoted AS (
@@ -472,35 +473,48 @@ def _register_analytic_views(con: duckdb.DuckDBPyConnection) -> None:
         """
         CREATE OR REPLACE VIEW polymarket_token_returns_aligned_daily AS
         WITH market_meta AS (
-          SELECT
-            yes_token_id,
-            market_id,
-            question,
-            crypto_asset_tag AS asset,
-            end_date_iso,
-            volume_1mo_usd,
-            volume_total_usd
-          FROM polymarket_crypto_markets
-          WHERE yes_token_id IS NOT NULL
-            AND crypto_asset_tag IS NOT NULL
+          SELECT * EXCLUDE (rn)
+          FROM (
+            SELECT
+              yes_token_id,
+              market_id,
+              slug AS market_slug,
+              question,
+              crypto_asset_tag AS asset,
+              end_date_iso,
+              volume_1mo_usd,
+              volume_total_usd,
+              liquidity_usd,
+              ROW_NUMBER() OVER (
+                PARTITION BY yes_token_id, market_id
+                ORDER BY event_time_ns DESC, ingest_time_ns DESC
+              ) AS rn
+            FROM polymarket_crypto_markets
+            WHERE yes_token_id IS NOT NULL
+              AND crypto_asset_tag IS NOT NULL
+          )
+          WHERE rn = 1
         ),
         poly_daily AS (
           SELECT p.token_id, p.market_id, p.open_time_ns, p.price,
-                 m.asset, m.question, m.end_date_iso,
-                 m.volume_1mo_usd, m.volume_total_usd
+                 m.asset, m.market_slug, m.question, m.end_date_iso,
+                 m.volume_1mo_usd, m.volume_total_usd, m.liquidity_usd
           FROM polymarket_price_history_daily p
           JOIN market_meta m ON p.token_id = m.yes_token_id
         )
         SELECT
-          p.asset,
-          p.token_id,
-          p.market_id,
-          p.question,
-          p.end_date_iso,
-          p.volume_1mo_usd,
-          p.open_time_ns,
-          p.price AS poly_yes_price,
-          p.price - LAG(p.price) OVER w AS poly_price_change,
+            p.asset,
+            p.token_id,
+            p.market_id,
+            p.market_slug,
+            p.question,
+            p.end_date_iso,
+            p.volume_1mo_usd,
+            p.volume_total_usd,
+            p.liquidity_usd,
+            p.open_time_ns,
+            p.price AS poly_yes_price,
+            p.price - LAG(p.price) OVER w AS poly_price_change,
           r.symbol AS crypto_symbol,
           r.close AS crypto_close,
           r.log_return AS crypto_log_return,
@@ -527,22 +541,32 @@ def _register_analytic_views(con: duckdb.DuckDBPyConnection) -> None:
         """
         CREATE OR REPLACE VIEW polymarket_token_returns_aligned AS
         WITH market_meta AS (
-          SELECT
-            yes_token_id,
-            market_id,
-            question,
-            crypto_asset_tag AS asset,
-            end_date_iso,
-            volume_1mo_usd,
-            volume_total_usd
-          FROM polymarket_crypto_markets
-          WHERE yes_token_id IS NOT NULL
-            AND crypto_asset_tag IS NOT NULL
+          SELECT * EXCLUDE (rn)
+          FROM (
+            SELECT
+              yes_token_id,
+              market_id,
+              slug AS market_slug,
+              question,
+              crypto_asset_tag AS asset,
+              end_date_iso,
+              volume_1mo_usd,
+              volume_total_usd,
+              liquidity_usd,
+              ROW_NUMBER() OVER (
+                PARTITION BY yes_token_id, market_id
+                ORDER BY event_time_ns DESC, ingest_time_ns DESC
+              ) AS rn
+            FROM polymarket_crypto_markets
+            WHERE yes_token_id IS NOT NULL
+              AND crypto_asset_tag IS NOT NULL
+          )
+          WHERE rn = 1
         ),
         poly_hourly AS (
           SELECT p.token_id, p.market_id, p.open_time_ns, p.price,
-                 m.asset, m.question, m.end_date_iso,
-                 m.volume_1mo_usd, m.volume_total_usd
+                 m.asset, m.market_slug, m.question, m.end_date_iso,
+                 m.volume_1mo_usd, m.volume_total_usd, m.liquidity_usd
           FROM polymarket_price_history_hourly p
           JOIN market_meta m ON p.token_id = m.yes_token_id
         )
@@ -550,9 +574,12 @@ def _register_analytic_views(con: duckdb.DuckDBPyConnection) -> None:
           p.asset,
           p.token_id,
           p.market_id,
+          p.market_slug,
           p.question,
           p.end_date_iso,
           p.volume_1mo_usd,
+          p.volume_total_usd,
+          p.liquidity_usd,
           p.open_time_ns,
           p.price AS poly_yes_price,
           p.price - LAG(p.price) OVER w AS poly_price_change,
@@ -573,45 +600,57 @@ def _register_analytic_views(con: duckdb.DuckDBPyConnection) -> None:
         """
     )
 
-    # Joint alignment view: per (asset, hour) row carrying the dominant
-    # Polymarket YES-price for that asset alongside the matching crypto bar
-    # and forward returns for lead-lag analysis. We pick the highest-volume
-    # YES token per asset to avoid double-counting markets.
+    # Joint alignment view: per (YES token, hour) row carrying each crypto
+    # Polymarket YES-price alongside the matching crypto bar and forward
+    # returns for lead-lag analysis. This intentionally keeps all markets so
+    # research scans cannot silently collapse to only the top-volume question.
     con.execute(
         """
         CREATE OR REPLACE VIEW crypto_polymarket_aligned AS
-        WITH ranked_markets AS (
-          SELECT
-            crypto_asset_tag AS asset,
-            yes_token_id,
-            market_id,
-            question,
-            ROW_NUMBER() OVER (
-              PARTITION BY crypto_asset_tag
-              ORDER BY coalesce(volume_1mo_usd, volume_total_usd, 0.0) DESC
-            ) AS asset_rank
-          FROM polymarket_crypto_markets
-          WHERE yes_token_id IS NOT NULL
-            AND crypto_asset_tag IS NOT NULL
-            AND coalesce(active, true)
-        ),
-        primary_token_per_asset AS (
-          SELECT asset, yes_token_id, market_id, question
-          FROM ranked_markets
-          WHERE asset_rank = 1
+        WITH market_meta AS (
+          SELECT * EXCLUDE (rn)
+          FROM (
+            SELECT
+              crypto_asset_tag AS asset,
+              yes_token_id,
+              market_id,
+              slug AS market_slug,
+              question,
+              end_date_iso,
+              volume_1mo_usd,
+              volume_total_usd,
+              liquidity_usd,
+              ROW_NUMBER() OVER (
+                PARTITION BY yes_token_id, market_id
+                ORDER BY event_time_ns DESC, ingest_time_ns DESC
+              ) AS rn
+            FROM polymarket_crypto_markets
+            WHERE yes_token_id IS NOT NULL
+              AND crypto_asset_tag IS NOT NULL
+          )
+          WHERE rn = 1
         ),
         poly_hourly AS (
           SELECT p.token_id, p.market_id, p.open_time_ns, p.price,
-                 m.asset, m.question
+                 m.asset, m.market_slug, m.question, m.end_date_iso,
+                 m.volume_1mo_usd, m.volume_total_usd, m.liquidity_usd
           FROM polymarket_price_history_hourly p
-          JOIN primary_token_per_asset m ON p.token_id = m.yes_token_id
+          JOIN market_meta m ON p.token_id = m.yes_token_id
         ),
         joined AS (
           SELECT
             p.asset,
+            p.token_id,
+            p.market_id,
+            p.market_slug,
             p.open_time_ns,
             p.price AS poly_yes_price,
+            p.question,
             p.question AS poly_question,
+            p.end_date_iso,
+            p.volume_1mo_usd,
+            p.volume_total_usd,
+            p.liquidity_usd,
             r.symbol AS crypto_symbol,
             r.close AS crypto_close,
             r.log_return AS crypto_log_return
@@ -623,10 +662,18 @@ def _register_analytic_views(con: duckdb.DuckDBPyConnection) -> None:
         )
         SELECT
           asset,
+          token_id,
+          market_id,
+          market_slug,
           open_time_ns,
           poly_yes_price,
           poly_yes_price - LAG(poly_yes_price) OVER w AS poly_price_change,
+          question,
           poly_question,
+          end_date_iso,
+          volume_1mo_usd,
+          volume_total_usd,
+          liquidity_usd,
           crypto_symbol,
           crypto_close,
           crypto_log_return,
@@ -634,7 +681,7 @@ def _register_analytic_views(con: duckdb.DuckDBPyConnection) -> None:
           LEAD(crypto_log_return, 4) OVER w AS crypto_log_return_next_4h,
           LEAD(crypto_log_return, 24) OVER w AS crypto_log_return_next_24h
         FROM joined
-        WINDOW w AS (PARTITION BY asset ORDER BY open_time_ns)
+        WINDOW w AS (PARTITION BY token_id ORDER BY open_time_ns)
         """
     )
 

@@ -179,18 +179,24 @@ def research_lead_lag(
         "hourly",
         help="Sampling frequency: 'hourly' (lags 0/1/4/24 h) or 'daily' (lags 0/1/3/7/14 d).",
     ),
-    out_path: Path = typer.Option(
-        Path("data/research/pattern_catalog"),
-        help="Output prefix. Two files written: {prefix}.tokens.parquet and {prefix}.buckets.parquet.",
+    output_dir: Path = typer.Option(
+        Path("artifacts/research/lead_lag"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for lead_lag_summary.md, lead_lag_results.csv, "
+            "and lead_lag_candidates.json."
+        ),
     ),
-    show_top: int = typer.Option(10, help="Print the top-N bucket results by |t-stat|."),
+    show_top: int = typer.Option(10, help="Print the top-N candidates by |t-stat|."),
     warehouse_root: Path = typer.Option(None),
 ) -> None:
-    """Run the Polymarket→crypto lead-lag study and write a pattern catalog."""
+    """Run the exploratory Polymarket→crypto lead-lag report."""
 
     from joint_research.research.lead_lag import (  # noqa: PLC0415
+        rank_signal_candidates,
         run_lead_lag_study,
-        write_pattern_catalog,
+        write_lead_lag_report,
     )
 
     paths = _resolve_paths(warehouse_root)
@@ -199,20 +205,27 @@ def research_lead_lag(
         min_observations_per_token=min_observations,
         frequency=frequency,
     )
-    if not token_results:
-        typer.echo("no tokens met the min_observations threshold. backfill more data.")
-        raise typer.Exit(code=1)
 
-    write_pattern_catalog(
-        out_path=out_path.resolve(),
+    report_paths = write_lead_lag_report(
+        output_dir=output_dir.resolve(),
         token_results=token_results,
         bucket_results=bucket_results,
     )
 
+    markets_tested = len({(r.asset, r.market_id, r.token_id) for r in token_results})
     typer.echo(
-        f"tokens_tested={len(set((r.token_id, r.lag_hours) for r in token_results))} "
+        "EXPLORATORY ONLY - NOT TRADEABLE\n"
+        f"markets_tested={markets_tested} "
+        f"hypothesis_rows={len(token_results)} "
         f"bucket_cells={len(bucket_results)}"
     )
+    typer.echo(f"summary={report_paths.summary_md}")
+    typer.echo(f"results_csv={report_paths.results_csv}")
+    typer.echo(f"candidates_json={report_paths.candidates_json}")
+
+    if not token_results:
+        typer.echo("no tokens met the min_observations threshold. backfill more data.")
+        raise typer.Exit(code=0)
 
     sig = [b for b in bucket_results if b.bh_significant_at_0_05]
     if sig:
@@ -226,16 +239,12 @@ def research_lead_lag(
     else:
         typer.echo("no BH-significant bucket cells at alpha=0.05 (expected with limited data)")
 
-    typer.echo(f"\ntop {show_top} bucket cells by |t|:")
-    ordered = sorted(
-        (b for b in bucket_results if not (math.isnan(b.pooled_tstat))),
-        key=lambda b: -abs(b.pooled_tstat),
-    )[:show_top]
-    for b in ordered:
+    typer.echo(f"\ntop {show_top} exploratory candidates by |t|:")
+    for c in rank_signal_candidates(token_results, limit=show_top):
         typer.echo(
-            f"  asset={b.asset:>4} bucket={b.days_bucket:>7} lag={b.lag_hours:>2}h "
-            f"r={b.pooled_correlation:+.3f} t={b.pooled_tstat:+.2f} "
-            f"p={b.pooled_pvalue:.4f} n_tokens={b.n_tokens} n_obs={b.n_observations}"
+            f"  rank={c.rank:>2} asset={c.asset:>4} lag={c.lag_hours:>2}h "
+            f"r={c.correlation:+.3f} t={c.tstat:+.2f} p={c.pvalue_two_sided:.4f} "
+            f"n={c.n} market={c.market_slug or c.market_id}"
         )
 
 

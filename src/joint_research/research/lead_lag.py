@@ -1,35 +1,27 @@
-"""Lead-lag study: do Polymarket Δprob shifts predict future crypto returns?
+"""Lead-lag study: do Polymarket probability shifts predict crypto returns?
 
-Approach:
+The hourly study reads ``crypto_polymarket_aligned`` after DuckDB view
+registration, scans every aligned crypto YES token, and computes Pearson
+correlations between ``poly_price_change`` and same-hour/+1h/+4h/+24h crypto
+log returns.
 
-1. For each YES token in ``polymarket_token_returns_aligned``, compute the
-   Pearson correlation of ``poly_price_change`` against forward crypto
-   log-returns at lags {0, +1h, +4h, +24h}. Also compute the reverse
-   (lagged poly vs current crypto) so we can tell which side leads.
-2. Compute a t-statistic ``t = r * sqrt((n-2)/(1-r^2))`` and a two-sided
-   p-value from the t-distribution survival function.
-3. Bucket each token by days-to-resolution (``<7d``, ``7-30d``, ``30-90d``,
-   ``>90d``, ``unknown``) so we can separate time-decay-dominated tail
-   markets from active-pricing markets.
-4. Aggregate per (asset, days_bucket): pooled correlation across tokens
-   weighted by sample size, plus Benjamini-Hochberg adjusted significance
-   over the full table of tested hypotheses.
-
-The output is two structured tables:
-- ``LeadLagTokenResult`` rows — one per token × lag pair tested.
-- ``LeadLagBucketResult`` rows — one per (asset, days_bucket, lag) cell.
-
-Both can be written to ``pattern_catalog.parquet`` for downstream selection.
+Outputs are intentionally paper-only:
+- ``LeadLagTokenResult`` rows, one per market/token/horizon.
+- ``LeadLagBucketResult`` rows segmented by asset, time-to-resolution,
+  volume, liquidity, and horizon.
+- Markdown/CSV/JSON artifacts labeled exploratory and not tradeable.
 """
 
 from __future__ import annotations
 
+import csv
+import json
 import math
 import statistics
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Sequence
 
 import duckdb
 import pyarrow as pa
@@ -54,7 +46,7 @@ class _FrequencyConfig:
 
 _HOURLY_CFG = _FrequencyConfig(
     label="hourly",
-    aligned_view="polymarket_token_returns_aligned",
+    aligned_view="crypto_polymarket_aligned",
     lag_horizons=LAG_HORIZONS_HOURLY,
     lag_unit="h",
     return_columns={
@@ -93,8 +85,11 @@ class LeadLagTokenResult:
     asset: str
     token_id: str
     market_id: str
+    market_slug: str | None
     question: str | None
     days_bucket: str
+    volume_bucket: str
+    liquidity_bucket: str
     lag_hours: int
     direction: str  # "poly_leads_crypto" | "crypto_leads_poly" | "contemporaneous"
     n: int
@@ -102,12 +97,16 @@ class LeadLagTokenResult:
     tstat: float
     pvalue_two_sided: float
     volume_1mo_usd: float | None
+    volume_total_usd: float | None
+    liquidity_usd: float | None
 
 
 @dataclass(frozen=True)
 class LeadLagBucketResult:
     asset: str
     days_bucket: str
+    volume_bucket: str
+    liquidity_bucket: str
     lag_hours: int
     direction: str
     n_tokens: int
@@ -116,6 +115,36 @@ class LeadLagBucketResult:
     pooled_tstat: float
     pooled_pvalue: float
     bh_significant_at_0_05: bool
+
+
+@dataclass(frozen=True)
+class LeadLagCandidate:
+    rank: int
+    asset: str
+    market_id: str
+    market_slug: str | None
+    token_id: str
+    question: str | None
+    lag_hours: int
+    n: int
+    correlation: float
+    tstat: float
+    pvalue_two_sided: float
+    candidate_score: float
+    days_bucket: str
+    volume_bucket: str
+    liquidity_bucket: str
+    volume_1mo_usd: float | None
+    volume_total_usd: float | None
+    liquidity_usd: float | None
+    exploratory_label: str = "EXPLORATORY ONLY - NOT TRADEABLE"
+
+
+@dataclass(frozen=True)
+class LeadLagReportPaths:
+    summary_md: Path
+    results_csv: Path
+    candidates_json: Path
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +164,7 @@ def pearson_correlation_with_tstat(
     """
 
     paired: list[tuple[float, float]] = []
-    for x, y in zip(xs, ys):
+    for x, y in zip(xs, ys, strict=False):
         if x is None or y is None:
             continue
         if isinstance(x, float) and math.isnan(x):
@@ -295,7 +324,15 @@ def run_lead_lag_study(
     tokens_meta = con.execute(
         f"""
         SELECT DISTINCT
-          asset, token_id, market_id, question, end_date_iso, volume_1mo_usd
+          asset,
+          token_id,
+          market_id,
+          market_slug,
+          question,
+          end_date_iso,
+          volume_1mo_usd,
+          volume_total_usd,
+          liquidity_usd
         FROM {cfg.aligned_view}
         ORDER BY asset, token_id
         """
@@ -306,16 +343,27 @@ def run_lead_lag_study(
     )
 
     token_results: list[LeadLagTokenResult] = []
-    for (asset, token_id, market_id, question, end_iso, vol) in tokens_meta:
+    for (
+        asset,
+        token_id,
+        market_id,
+        market_slug,
+        question,
+        end_iso,
+        volume_1mo,
+        volume_total,
+        liquidity,
+    ) in tokens_meta:
         rows = con.execute(
             f"""
             SELECT poly_price_change, {return_select}
             FROM {cfg.aligned_view}
             WHERE token_id = ?
+              AND market_id = ?
               AND poly_price_change IS NOT NULL
             ORDER BY open_time_ns
             """,
-            [token_id],
+            [token_id, market_id],
         ).fetchall()
         if len(rows) < min_observations_per_token:
             continue
@@ -325,6 +373,8 @@ def run_lead_lag_study(
             for i, lag in enumerate(cfg.lag_horizons)
         }
         days_bucket = _days_bucket_label(end_iso, as_of=as_of)
+        volume_bucket = _dollar_bucket_label(_first_present(volume_1mo, volume_total))
+        liquidity_bucket = _dollar_bucket_label(liquidity)
 
         for lag in cfg.lag_horizons:
             n, r_corr, t, p = pearson_correlation_with_tstat(delta, crypto_lag_map[lag])
@@ -334,15 +384,20 @@ def run_lead_lag_study(
                     asset=asset,
                     token_id=token_id,
                     market_id=market_id,
+                    market_slug=market_slug,
                     question=question,
                     days_bucket=days_bucket,
+                    volume_bucket=volume_bucket,
+                    liquidity_bucket=liquidity_bucket,
                     lag_hours=lag if cfg.lag_unit == "h" else lag * 24,
                     direction=direction,
                     n=n,
                     correlation=r_corr,
                     tstat=t,
                     pvalue_two_sided=p,
-                    volume_1mo_usd=vol,
+                    volume_1mo_usd=volume_1mo,
+                    volume_total_usd=volume_total,
+                    liquidity_usd=liquidity,
                 )
             )
 
@@ -353,12 +408,21 @@ def run_lead_lag_study(
 def _aggregate_buckets(
     token_results: Iterable[LeadLagTokenResult],
 ) -> list[LeadLagBucketResult]:
-    grouped: dict[tuple[str, str, int, str], list[LeadLagTokenResult]] = {}
+    grouped: dict[tuple[str, str, str, str, int, str], list[LeadLagTokenResult]] = {}
     for tr in token_results:
-        key = (tr.asset, tr.days_bucket, tr.lag_hours, tr.direction)
+        key = (
+            tr.asset,
+            tr.days_bucket,
+            tr.volume_bucket,
+            tr.liquidity_bucket,
+            tr.lag_hours,
+            tr.direction,
+        )
         grouped.setdefault(key, []).append(tr)
 
-    raw: list[tuple[tuple[str, str, int, str], int, int, float, float, float]] = []
+    raw: list[
+        tuple[tuple[str, str, str, str, int, str], int, int, float, float, float]
+    ] = []
     for key, items in grouped.items():
         valid = [
             it for it in items
@@ -374,7 +438,9 @@ def _aggregate_buckets(
         weights = [it.n - 3 for it in valid]
         if sum(weights) <= 0:
             continue
-        z_mean = sum(z * w for z, w in zip(z_values, weights)) / sum(weights)
+        z_mean = sum(
+            z * w for z, w in zip(z_values, weights, strict=False)
+        ) / sum(weights)
         z_se = 1.0 / math.sqrt(sum(weights))
         z_t = z_mean / z_se if z_se > 0 else math.nan
         pooled_r = _inverse_fisher_z(z_mean)
@@ -384,12 +450,16 @@ def _aggregate_buckets(
     pvalues = [item[5] for item in raw]
     bh = benjamini_hochberg_significant(pvalues, alpha=0.05)
     out: list[LeadLagBucketResult] = []
-    for (key, n_tokens, n_obs, pooled_r, z_t, pooled_p), survives in zip(raw, bh):
-        asset, days_bucket, lag_hours, direction = key
+    for (key, n_tokens, n_obs, pooled_r, z_t, pooled_p), survives in zip(
+        raw, bh, strict=False
+    ):
+        asset, days_bucket, volume_bucket, liquidity_bucket, lag_hours, direction = key
         out.append(
             LeadLagBucketResult(
                 asset=asset,
                 days_bucket=days_bucket,
+                volume_bucket=volume_bucket,
+                liquidity_bucket=liquidity_bucket,
                 lag_hours=lag_hours,
                 direction=direction,
                 n_tokens=n_tokens,
@@ -400,7 +470,15 @@ def _aggregate_buckets(
                 bh_significant_at_0_05=survives,
             )
         )
-    out.sort(key=lambda b: (b.asset, b.days_bucket, b.lag_hours))
+    out.sort(
+        key=lambda b: (
+            b.asset,
+            b.days_bucket,
+            b.volume_bucket,
+            b.liquidity_bucket,
+            b.lag_hours,
+        )
+    )
     return out
 
 
@@ -436,6 +514,263 @@ def _days_bucket_label(end_date_iso: str | None, *, as_of: datetime) -> str:
         if lo <= delta_days < hi:
             return label
     return UNKNOWN_BUCKET
+
+
+def _first_present(*values: float | None) -> float | None:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, float) and math.isnan(value):
+            continue
+        return float(value)
+    return None
+
+
+def _dollar_bucket_label(value: float | None) -> str:
+    if value is None or math.isnan(value):
+        return "unknown"
+    if value < 10_000:
+        return "<10k"
+    if value < 100_000:
+        return "10k-100k"
+    if value < 1_000_000:
+        return "100k-1m"
+    return ">=1m"
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.1 report output
+# ---------------------------------------------------------------------------
+
+
+def rank_signal_candidates(
+    token_results: Sequence[LeadLagTokenResult],
+    *,
+    limit: int | None = 20,
+    min_observations: int = 30,
+) -> list[LeadLagCandidate]:
+    """Rank exploratory Polymarket-leading candidates deterministically."""
+
+    eligible = [
+        row
+        for row in token_results
+        if row.direction == "poly_leads_crypto"
+        and row.n >= min_observations
+        and _is_finite(row.correlation)
+        and _is_finite(row.tstat)
+    ]
+    ordered = sorted(
+        eligible,
+        key=lambda row: (
+            -_candidate_score(row),
+            -abs(row.correlation),
+            -row.n,
+            row.asset,
+            row.market_slug or "",
+            row.market_id,
+            row.token_id,
+            row.lag_hours,
+        ),
+    )
+    if limit is not None:
+        ordered = ordered[:limit]
+    return [
+        LeadLagCandidate(
+            rank=rank,
+            asset=row.asset,
+            market_id=row.market_id,
+            market_slug=row.market_slug,
+            token_id=row.token_id,
+            question=row.question,
+            lag_hours=row.lag_hours,
+            n=row.n,
+            correlation=row.correlation,
+            tstat=row.tstat,
+            pvalue_two_sided=row.pvalue_two_sided,
+            candidate_score=_candidate_score(row),
+            days_bucket=row.days_bucket,
+            volume_bucket=row.volume_bucket,
+            liquidity_bucket=row.liquidity_bucket,
+            volume_1mo_usd=row.volume_1mo_usd,
+            volume_total_usd=row.volume_total_usd,
+            liquidity_usd=row.liquidity_usd,
+        )
+        for rank, row in enumerate(ordered, start=1)
+    ]
+
+
+def write_lead_lag_report(
+    *,
+    output_dir: Path,
+    token_results: Sequence[LeadLagTokenResult],
+    bucket_results: Sequence[LeadLagBucketResult],
+    candidate_limit: int = 20,
+) -> LeadLagReportPaths:
+    """Write the deterministic Phase 2.1 lead-lag report artifacts."""
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    summary_md = output_dir / "lead_lag_summary.md"
+    results_csv = output_dir / "lead_lag_results.csv"
+    candidates_json = output_dir / "lead_lag_candidates.json"
+
+    candidates = rank_signal_candidates(token_results, limit=candidate_limit)
+    _write_results_csv(results_csv, token_results)
+    candidates_json.write_text(
+        json.dumps([asdict(c) for c in candidates], indent=2, sort_keys=True) + "\n"
+    )
+    summary_md.write_text(_render_summary_md(token_results, bucket_results, candidates))
+
+    return LeadLagReportPaths(
+        summary_md=summary_md,
+        results_csv=results_csv,
+        candidates_json=candidates_json,
+    )
+
+
+def _write_results_csv(path: Path, token_results: Sequence[LeadLagTokenResult]) -> None:
+    fieldnames = [
+        "asset",
+        "market_id",
+        "market_slug",
+        "token_id",
+        "question",
+        "lag_hours",
+        "direction",
+        "n",
+        "correlation",
+        "tstat",
+        "pvalue_two_sided",
+        "candidate_score",
+        "days_bucket",
+        "volume_bucket",
+        "liquidity_bucket",
+        "volume_1mo_usd",
+        "volume_total_usd",
+        "liquidity_usd",
+        "exploratory_label",
+    ]
+    ordered = sorted(
+        token_results,
+        key=lambda row: (
+            -_candidate_score(row) if row.direction == "poly_leads_crypto" else math.inf,
+            row.asset,
+            row.market_slug or "",
+            row.market_id,
+            row.token_id,
+            row.lag_hours,
+        ),
+    )
+    with path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, lineterminator="\n")
+        writer.writeheader()
+        for row in ordered:
+            writer.writerow(
+                {
+                    "asset": row.asset,
+                    "market_id": row.market_id,
+                    "market_slug": row.market_slug,
+                    "token_id": row.token_id,
+                    "question": row.question,
+                    "lag_hours": row.lag_hours,
+                    "direction": row.direction,
+                    "n": row.n,
+                    "correlation": _float_or_blank(row.correlation),
+                    "tstat": _float_or_blank(row.tstat),
+                    "pvalue_two_sided": _float_or_blank(row.pvalue_two_sided),
+                    "candidate_score": _float_or_blank(_candidate_score(row)),
+                    "days_bucket": row.days_bucket,
+                    "volume_bucket": row.volume_bucket,
+                    "liquidity_bucket": row.liquidity_bucket,
+                    "volume_1mo_usd": _float_or_blank(row.volume_1mo_usd),
+                    "volume_total_usd": _float_or_blank(row.volume_total_usd),
+                    "liquidity_usd": _float_or_blank(row.liquidity_usd),
+                    "exploratory_label": "EXPLORATORY ONLY - NOT TRADEABLE",
+                }
+            )
+
+
+def _render_summary_md(
+    token_results: Sequence[LeadLagTokenResult],
+    bucket_results: Sequence[LeadLagBucketResult],
+    candidates: Sequence[LeadLagCandidate],
+) -> str:
+    markets = {(r.asset, r.market_id, r.token_id) for r in token_results}
+    lines = [
+        "# Lead-Lag Research Summary",
+        "",
+        "**EXPLORATORY ONLY - NOT TRADEABLE.**",
+        "",
+        "This report scans aligned Polymarket YES probability changes against same-hour "
+        "and forward crypto returns. It is a research screen, not a trading signal.",
+        "",
+        "## Coverage",
+        "",
+        f"- Markets/tokens tested: {len(markets)}",
+        f"- Hypothesis rows: {len(token_results)}",
+        f"- Segmented bucket rows: {len(bucket_results)}",
+        "- Horizons: same-hour, +1h, +4h, +24h",
+        "- Segments: asset, market/question/slug, time-to-resolution bucket, "
+        "volume bucket, liquidity bucket",
+        "",
+        "## Top Candidates",
+        "",
+    ]
+    if not candidates:
+        lines.extend(
+            [
+                "No eligible aligned samples met the candidate threshold.",
+                "",
+                "Practical read: collect more history before interpreting lead-lag behavior.",
+            ]
+        )
+        return "\n".join(lines) + "\n"
+
+    lines.append("| Rank | Asset | Lag | N | Corr | t-stat | p-value | Market |")
+    lines.append("| ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |")
+    for c in candidates[:10]:
+        market = c.market_slug or c.question or c.market_id
+        lines.append(
+            f"| {c.rank} | {c.asset} | {c.lag_hours}h | {c.n} | "
+            f"{c.correlation:+.4f} | {c.tstat:+.2f} | {c.pvalue_two_sided:.4g} | "
+            f"{_escape_md(str(market))} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Interpretation Guardrails",
+            "",
+            "- These are univariate exploratory correlations, not causal evidence.",
+            "- Multiple testing, thin samples, overlapping markets, and stale Polymarket pricing "
+            "can create false positives.",
+            "- A candidate is not tradeable until it survives out-of-sample testing, cost/slippage "
+            "modeling, execution simulation, and risk controls.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _candidate_score(row: LeadLagTokenResult) -> float:
+    if _is_finite(row.tstat):
+        return abs(row.tstat)
+    if _is_finite(row.correlation):
+        return abs(row.correlation) * math.sqrt(max(row.n - 2, 1))
+    return 0.0
+
+
+def _is_finite(value: float | None) -> bool:
+    return value is not None and not math.isnan(value) and not math.isinf(value)
+
+
+def _float_or_blank(value: float | None) -> float | str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
+        return ""
+    return value
+
+
+def _escape_md(value: str) -> str:
+    return value.replace("|", "\\|")
 
 
 # ---------------------------------------------------------------------------

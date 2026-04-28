@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import json
 import math
 import random
 from datetime import datetime, timedelta, timezone
 
 import pytest
-
 from joint_research.ingest.binance_klines import project_binance_klines
 from joint_research.ingest.clob_prices_history import project_history_samples
 from joint_research.ingest.gamma_crypto_markets import project_gamma_market_payload
 from joint_research.research.lead_lag import (
+    LeadLagTokenResult,
     benjamini_hochberg_significant,
     pearson_correlation_with_tstat,
+    rank_signal_candidates,
     run_lead_lag_study,
+    write_lead_lag_report,
     write_pattern_catalog,
 )
 from joint_research.warehouse import (
@@ -217,6 +220,127 @@ def test_run_lead_lag_rejects_unknown_frequency(tmp_path) -> None:
     paths = WarehousePaths(root=tmp_path)
     with pytest.raises(ValueError, match="unsupported_frequency"):
         run_lead_lag_study(paths=paths, frequency="weekly")
+
+
+def test_run_lead_lag_empty_warehouse_writes_empty_report(tmp_path) -> None:
+    paths = WarehousePaths(root=tmp_path / "warehouse")
+
+    token_results, bucket_results = run_lead_lag_study(
+        paths=paths, min_observations_per_token=10
+    )
+    assert token_results == []
+    assert bucket_results == []
+
+    report_paths = write_lead_lag_report(
+        output_dir=tmp_path / "artifacts" / "research" / "lead_lag",
+        token_results=token_results,
+        bucket_results=bucket_results,
+    )
+
+    assert report_paths.summary_md.name == "lead_lag_summary.md"
+    assert report_paths.results_csv.name == "lead_lag_results.csv"
+    assert report_paths.candidates_json.name == "lead_lag_candidates.json"
+    assert "No eligible aligned samples" in report_paths.summary_md.read_text()
+    assert json.loads(report_paths.candidates_json.read_text()) == []
+
+
+def test_run_lead_lag_respects_minimum_sample_threshold(tmp_path) -> None:
+    paths = _seed_known_signal_warehouse(tmp_path)
+
+    token_results, bucket_results = run_lead_lag_study(
+        paths=paths, min_observations_per_token=10_000
+    )
+
+    assert token_results == []
+    assert bucket_results == []
+
+
+def _candidate_result(
+    *,
+    asset: str,
+    market_slug: str,
+    lag_hours: int,
+    tstat: float,
+    correlation: float,
+    n: int = 40,
+) -> LeadLagTokenResult:
+    return LeadLagTokenResult(
+        asset=asset,
+        token_id=f"{market_slug}-yes",
+        market_id=f"{market_slug}-id",
+        market_slug=market_slug,
+        question=f"{market_slug} question",
+        days_bucket="7-30d",
+        volume_bucket="medium",
+        liquidity_bucket="unknown",
+        lag_hours=lag_hours,
+        direction="poly_leads_crypto" if lag_hours else "contemporaneous",
+        n=n,
+        correlation=correlation,
+        tstat=tstat,
+        pvalue_two_sided=0.01,
+        volume_1mo_usd=10_000.0,
+        volume_total_usd=20_000.0,
+        liquidity_usd=None,
+    )
+
+
+def test_rank_signal_candidates_is_deterministic() -> None:
+    # Same score and sample size: sort must fall back to stable semantic keys,
+    # not input order.
+    z = _candidate_result(
+        asset="ETH",
+        market_slug="z-market",
+        lag_hours=4,
+        tstat=3.0,
+        correlation=0.4,
+    )
+    a = _candidate_result(
+        asset="BTC",
+        market_slug="a-market",
+        lag_hours=4,
+        tstat=3.0,
+        correlation=0.4,
+    )
+
+    candidates = rank_signal_candidates([z, a], limit=2)
+
+    assert [c.market_slug for c in candidates] == ["a-market", "z-market"]
+    assert [c.rank for c in candidates] == [1, 2]
+
+
+def test_lead_lag_report_writes_required_artifacts(tmp_path) -> None:
+    token_results = [
+        _candidate_result(
+            asset="BTC",
+            market_slug="btc-market",
+            lag_hours=1,
+            tstat=4.0,
+            correlation=0.6,
+        ),
+        _candidate_result(
+            asset="BTC",
+            market_slug="btc-market",
+            lag_hours=0,
+            tstat=1.0,
+            correlation=0.1,
+        ),
+    ]
+
+    report_paths = write_lead_lag_report(
+        output_dir=tmp_path / "lead_lag",
+        token_results=token_results,
+        bucket_results=[],
+    )
+
+    csv_text = report_paths.results_csv.read_text()
+    candidates = json.loads(report_paths.candidates_json.read_text())
+    summary = report_paths.summary_md.read_text()
+
+    assert "asset,market_id,market_slug" in csv_text
+    assert candidates[0]["asset"] == "BTC"
+    assert candidates[0]["lag_hours"] == 1
+    assert "EXPLORATORY ONLY - NOT TRADEABLE" in summary
 
 
 def test_pattern_catalog_writes_two_parquet_files(tmp_path) -> None:
