@@ -333,6 +333,74 @@ def research_robustness(
         )
 
 
+@research_app.command("composite-signal")
+def research_composite_signal(
+    min_train_samples: int = typer.Option(30, help="Minimum train samples per rule."),
+    min_test_samples: int = typer.Option(20, help="Minimum test samples per rule."),
+    output_dir: Path = typer.Option(
+        Path("artifacts/research/composite_signal"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for composite_signal_summary.md, composite_signal_results.csv, "
+            "and composite_signal_candidates.json."
+        ),
+    ),
+    show_top: int = typer.Option(10, help="Print the top-N composite candidates."),
+    warehouse_root: Path = typer.Option(None),
+) -> None:
+    """Run deterministic composite signal scans over warehouse features."""
+
+    from joint_research.research.composite_signal import (  # noqa: PLC0415
+        CompositeCandidateGrade,
+        run_composite_signal_study,
+        write_composite_signal_report,
+    )
+
+    paths = _resolve_paths(warehouse_root)
+    results = run_composite_signal_study(
+        paths=paths,
+        min_train_samples=min_train_samples,
+        min_test_samples=min_test_samples,
+    )
+    report_paths = write_composite_signal_report(
+        output_dir=output_dir.resolve(),
+        results=results,
+    )
+    counts = {
+        grade.value: sum(1 for result in results if result.grade is grade)
+        for grade in CompositeCandidateGrade
+    }
+    typer.echo(
+        "EXPLORATORY ONLY - NOT TRADEABLE\n"
+        f"rule_rows={len(results)} "
+        f"simulation_ready={counts['SIMULATION_READY']} "
+        f"watchlist={counts['WATCHLIST']} "
+        f"weak={counts['WEAK']} "
+        f"rejected={counts['REJECTED']}"
+    )
+    typer.echo(f"summary={report_paths.summary_md}")
+    typer.echo(f"results_csv={report_paths.results_csv}")
+    typer.echo(f"candidates_json={report_paths.candidates_json}")
+
+    candidates = [
+        result for result in results if result.grade is not CompositeCandidateGrade.REJECTED
+    ][:show_top]
+    if not candidates:
+        typer.echo("no composite candidates survived beyond REJECTED.")
+        raise typer.Exit(code=0)
+
+    typer.echo(f"\ntop {show_top} composite candidates:")
+    for result in candidates:
+        typer.echo(
+            f"  rank={result.rank:>2} grade={result.grade.value:<16} "
+            f"asset={result.asset:>4} horizon={result.horizon_hours:>2}h "
+            f"test_acc={result.test_accuracy:.2f} "
+            f"test_avg={result.test_average_forward_return:+.5f} "
+            f"rule={result.rule_family} market={result.market_slug or result.market_id}"
+        )
+
+
 @research_app.command("simulate")
 def research_simulate(
     starting_capital: float = typer.Option(200.0, help="Paper bankroll in USD."),
