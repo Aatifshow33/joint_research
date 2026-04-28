@@ -333,6 +333,95 @@ def research_robustness(
         )
 
 
+@research_app.command("simulate")
+def research_simulate(
+    starting_capital: float = typer.Option(200.0, help="Paper bankroll in USD."),
+    fixed_notional: float = typer.Option(10.0, help="Fixed paper notional per trade."),
+    max_simultaneous_exposure: float = typer.Option(
+        50.0,
+        help="Maximum simultaneous simulated exposure in USD.",
+    ),
+    fee_bps: float = typer.Option(10.0, help="Per-side paper fee in basis points."),
+    slippage_bps: float = typer.Option(10.0, help="Per-side paper slippage in basis points."),
+    min_samples: int = typer.Option(20, help="Minimum simulation observations per candidate."),
+    min_probability_move: float = typer.Option(
+        0.001,
+        help="Skip signals with smaller absolute probability movement.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/research/simulation"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for simulation_summary.md, simulation_trades.csv, "
+            "simulation_results.csv, and simulation_candidates.json."
+        ),
+    ),
+    show_top: int = typer.Option(10, help="Print the top-N simulated candidates."),
+    warehouse_root: Path = typer.Option(None),
+) -> None:
+    """Run paper-only walk-forward simulation for robust candidates."""
+
+    from joint_research.research.simulation import (  # noqa: PLC0415
+        SimulationGrade,
+        run_simulation_study,
+        write_simulation_report,
+    )
+
+    paths = _resolve_paths(warehouse_root)
+    results = run_simulation_study(
+        paths=paths,
+        starting_capital=starting_capital,
+        fixed_notional=fixed_notional,
+        max_simultaneous_exposure=max_simultaneous_exposure,
+        fee_bps=fee_bps,
+        slippage_bps=slippage_bps,
+        min_samples=min_samples,
+        min_probability_move=min_probability_move,
+    )
+    report_paths = write_simulation_report(
+        output_dir=output_dir.resolve(),
+        results=results,
+    )
+
+    counts = {
+        grade.value: sum(1 for result in results if result.simulation_grade is grade)
+        for grade in SimulationGrade
+    }
+    total_pnl = sum(result.total_paper_pnl for result in results)
+    total_trades = sum(result.trade_count for result in results)
+    typer.echo(
+        "EXPLORATORY ONLY - NOT TRADEABLE\n"
+        f"candidates_simulated={len(results)} "
+        f"trades={total_trades} "
+        f"paper_pnl=${total_pnl:.2f} "
+        f"paper_ready={counts['PAPER_READY']} "
+        f"watchlist={counts['WATCHLIST']} "
+        f"rejected={counts['REJECTED']}"
+    )
+    typer.echo(f"summary={report_paths.summary_md}")
+    typer.echo(f"trades_csv={report_paths.trades_csv}")
+    typer.echo(f"results_csv={report_paths.results_csv}")
+    typer.echo(f"candidates_json={report_paths.candidates_json}")
+
+    candidates = [
+        result for result in results if result.simulation_grade is not SimulationGrade.REJECTED
+    ][:show_top]
+    if not candidates:
+        typer.echo("no simulation candidates survived beyond REJECTED.")
+        raise typer.Exit(code=0)
+
+    typer.echo(f"\ntop {show_top} simulated candidates:")
+    for result in candidates:
+        typer.echo(
+            f"  rank={result.rank:>2} grade={result.simulation_grade.value:<11} "
+            f"asset={result.asset:>4} lag={result.lag_hours:>2}h "
+            f"trades={result.trade_count} win={result.win_rate:.2f} "
+            f"pnl=${result.total_paper_pnl:.2f} dd=${result.max_drawdown:.2f} "
+            f"market={result.market_slug or result.market_id}"
+        )
+
+
 @ingest_app.command("wallet-activity")
 def ingest_wallet_activity(
     limit: int = typer.Option(50, help="Top-N wallets to discover and pull activity for."),
