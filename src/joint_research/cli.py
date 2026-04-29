@@ -602,6 +602,10 @@ def research_wallet_flow_signal(
 
 @research_app.command("simulate")
 def research_simulate(
+    candidate_source: str = typer.Option(
+        "robustness",
+        help="Candidate source: robustness|composite-signal|derivatives-regime|wallet-flow-signal.",
+    ),
     starting_capital: float = typer.Option(200.0, help="Paper bankroll in USD."),
     fixed_notional: float = typer.Option(10.0, help="Fixed paper notional per trade."),
     max_simultaneous_exposure: float = typer.Option(
@@ -631,13 +635,21 @@ def research_simulate(
 
     from joint_research.research.simulation import (  # noqa: PLC0415
         SimulationGrade,
+        CANDIDATE_SOURCES,
         run_simulation_study,
         write_simulation_report,
     )
 
+    if candidate_source not in CANDIDATE_SOURCES:
+        raise typer.BadParameter(
+            "candidate_source must be one of: "
+            + ",".join(sorted(CANDIDATE_SOURCES))
+        )
+
     paths = _resolve_paths(warehouse_root)
     results = run_simulation_study(
         paths=paths,
+        candidate_source=candidate_source,
         starting_capital=starting_capital,
         fixed_notional=fixed_notional,
         max_simultaneous_exposure=max_simultaneous_exposure,
@@ -646,9 +658,16 @@ def research_simulate(
         min_samples=min_samples,
         min_probability_move=min_probability_move,
     )
+    resolved_output_dir = output_dir.resolve()
+    file_prefix = "simulation"
+    if candidate_source == "wallet-flow-signal":
+        file_prefix = "simulation_wallet_flow"
+        if output_dir == Path("artifacts/research/simulation"):
+            resolved_output_dir = Path("artifacts/research/simulation_wallet_flow").resolve()
     report_paths = write_simulation_report(
-        output_dir=output_dir.resolve(),
+        output_dir=resolved_output_dir,
         results=results,
+        file_prefix=file_prefix,
     )
 
     counts = {
@@ -659,6 +678,7 @@ def research_simulate(
     total_trades = sum(result.trade_count for result in results)
     typer.echo(
         "EXPLORATORY ONLY - NOT TRADEABLE\n"
+        f"candidate_source={candidate_source} "
         f"candidates_simulated={len(results)} "
         f"trades={total_trades} "
         f"paper_pnl=${total_pnl:.2f} "

@@ -1,4 +1,4 @@
-"""Walk-forward paper simulation for robust Polymarket -> crypto candidates."""
+"""Walk-forward paper simulation for Polymarket -> crypto candidates."""
 
 from __future__ import annotations
 
@@ -23,6 +23,12 @@ from joint_research.warehouse.views import register_views
 
 HOUR_NS = 3_600_000_000_000
 SIMULATION_GRADES = {"REJECTED", "WATCHLIST", "PAPER_READY"}
+CANDIDATE_SOURCES = {
+    "robustness",
+    "composite-signal",
+    "derivatives-regime",
+    "wallet-flow-signal",
+}
 
 
 class SimulationGrade(str, Enum):
@@ -41,6 +47,11 @@ class SimulationCandidate:
     lag_hours: int
     signal_correlation: float
     robustness_grade: str
+    candidate_source: str = "robustness"
+    feature_name: str | None = None
+    segment_type: str | None = None
+    segment_value: str | None = None
+    learned_direction: int | None = None
 
 
 @dataclass(frozen=True)
@@ -49,6 +60,20 @@ class SimulationObservation:
     poly_price_change: float
     crypto_close: float
     forward_log_return: float
+    buy_volume_usdc: float | None = None
+    sell_volume_usdc: float | None = None
+    net_flow_usdc: float | None = None
+    abs_net_flow_usdc: float | None = None
+    unique_active_wallets: int | None = None
+    large_trade_count: int | None = None
+    whale_flow_score: float | None = None
+    copy_flow_count: int | None = None
+    flow_momentum_4h: float | None = None
+    flow_momentum_24h: float | None = None
+    flow_direction: str | None = None
+    whale_flow_bucket: str | None = None
+    active_wallet_bucket: str | None = None
+    copy_flow_bucket: str | None = None
 
 
 @dataclass(frozen=True)
@@ -139,20 +164,21 @@ def simulate_candidate(
 
     for obs in ordered:
         active = [trade for trade in active if trade.exit_time_ns > obs.open_time_ns + HOUR_NS]
-        if abs(obs.poly_price_change) < min_probability_move:
-            skipped_tiny += 1
-            continue
-        side = determine_side(
-            signal_correlation=candidate.signal_correlation,
-            probability_change=obs.poly_price_change,
-        )
+
+        side = _candidate_side(candidate, obs)
         if side == 0:
             skipped_tiny += 1
             continue
+
+        if candidate.candidate_source == "robustness" and abs(obs.poly_price_change) < min_probability_move:
+            skipped_tiny += 1
+            continue
+
         current_exposure = sum(trade.notional_usd for trade in active)
         if current_exposure + fixed_notional > max_simultaneous_exposure:
             skipped_cap += 1
             continue
+
         gross_return = side * (math.exp(obs.forward_log_return) - 1.0)
         net_return = gross_return - round_trip_cost
         entry_time_ns = obs.open_time_ns + HOUR_NS
@@ -188,6 +214,7 @@ def simulate_candidate(
 def run_simulation_study(
     *,
     paths: WarehousePaths,
+    candidate_source: str = "robustness",
     starting_capital: float = 200.0,
     fixed_notional: float = 10.0,
     max_simultaneous_exposure: float = 50.0,
@@ -196,10 +223,15 @@ def run_simulation_study(
     min_samples: int = 20,
     min_probability_move: float = 0.001,
 ) -> list[SimulationResult]:
-    robust_results = run_robustness_study(paths=paths)
-    candidates = [_candidate_from_robustness(r) for r in robust_results if _is_simulatable(r)]
+    if candidate_source not in CANDIDATE_SOURCES:
+        raise ValueError(f"unsupported_candidate_source:{candidate_source}")
+
     con = duckdb.connect()
     register_views(con, paths)
+    candidates = _load_candidates(paths=paths, source=candidate_source)
+    if candidate_source == "wallet-flow-signal":
+        candidates = _dedupe_wallet_candidates(candidates)
+
     results = [
         simulate_candidate(
             candidate,
@@ -246,12 +278,13 @@ def write_simulation_report(
     output_dir: Path,
     results: Sequence[SimulationResult],
     candidate_limit: int = 20,
+    file_prefix: str = "simulation",
 ) -> SimulationReportPaths:
     output_dir.mkdir(parents=True, exist_ok=True)
-    summary_md = output_dir / "simulation_summary.md"
-    trades_csv = output_dir / "simulation_trades.csv"
-    results_csv = output_dir / "simulation_results.csv"
-    candidates_json = output_dir / "simulation_candidates.json"
+    summary_md = output_dir / f"{file_prefix}_summary.md"
+    trades_csv = output_dir / f"{file_prefix}_trades.csv"
+    results_csv = output_dir / f"{file_prefix}_results.csv"
+    candidates_json = output_dir / f"{file_prefix}_candidates.json"
 
     ordered = rank_simulation_results(results)
     candidates = [
@@ -272,6 +305,60 @@ def write_simulation_report(
     )
 
 
+def _load_candidates(*, paths: WarehousePaths, source: str) -> list[SimulationCandidate]:
+    if source == "robustness":
+        robust_results = run_robustness_study(paths=paths)
+        return [_candidate_from_robustness(r) for r in robust_results if _is_simulatable(r)]
+
+    if source == "composite-signal":
+        records = _load_json_records(
+            _artifact_path(
+                paths,
+                "artifacts",
+                "research",
+                "composite_signal",
+                "composite_signal_candidates.json",
+            )
+        )
+        return [_candidate_from_composite(record) for record in records if record.get("grade") in {"SIMULATION_READY", "WATCHLIST"}]
+
+    if source == "derivatives-regime":
+        records = _load_json_records(
+            _artifact_path(
+                paths,
+                "artifacts",
+                "research",
+                "derivatives_regime",
+                "derivatives_regime_candidates.json",
+            )
+        )
+        return [_candidate_from_derivatives(record) for record in records if record.get("grade") in {"SIMULATION_READY", "WATCHLIST"}]
+
+    records = _load_json_records(
+        _artifact_path(
+            paths,
+            "artifacts",
+            "research",
+            "wallet_flow_signal",
+            "wallet_flow_signal_candidates.json",
+        )
+    )
+    return [_candidate_from_wallet_flow(record) for record in records if record.get("grade") in {"SIMULATION_READY", "WATCHLIST"}]
+
+
+def _artifact_path(paths: WarehousePaths, *parts: str) -> Path:
+    return paths.root.resolve().parent.parent.joinpath(*parts)
+
+
+def _load_json_records(path: Path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text())
+    if not isinstance(payload, list):
+        return []
+    return [item for item in payload if isinstance(item, dict)]
+
+
 def _candidate_from_robustness(result: RobustnessResult) -> SimulationCandidate:
     corr = (
         result.test_correlation
@@ -287,6 +374,55 @@ def _candidate_from_robustness(result: RobustnessResult) -> SimulationCandidate:
         lag_hours=result.lag_hours,
         signal_correlation=corr,
         robustness_grade=result.grade.value,
+        candidate_source="robustness",
+    )
+
+
+def _candidate_from_composite(record: dict[str, object]) -> SimulationCandidate:
+    return SimulationCandidate(
+        asset=str(record.get("asset") or ""),
+        market_id=str(record.get("market_id") or ""),
+        market_slug=_optional_str(record.get("market_slug")),
+        token_id=str(record.get("token_id") or ""),
+        question=_optional_str(record.get("question")),
+        lag_hours=_optional_int(record.get("horizon_hours")) or 1,
+        signal_correlation=float(_optional_int(record.get("learned_direction")) or 0),
+        robustness_grade=str(record.get("grade") or "WATCHLIST"),
+        candidate_source="composite-signal",
+        learned_direction=_optional_int(record.get("learned_direction")),
+    )
+
+
+def _candidate_from_derivatives(record: dict[str, object]) -> SimulationCandidate:
+    return SimulationCandidate(
+        asset=str(record.get("asset") or ""),
+        market_id=str(record.get("market_id") or ""),
+        market_slug=_optional_str(record.get("market_slug")),
+        token_id=str(record.get("token_id") or ""),
+        question=_optional_str(record.get("question")),
+        lag_hours=_optional_int(record.get("horizon_hours")) or 1,
+        signal_correlation=float(_optional_int(record.get("learned_direction")) or 0),
+        robustness_grade=str(record.get("grade") or "WATCHLIST"),
+        candidate_source="derivatives-regime",
+        learned_direction=_optional_int(record.get("learned_direction")),
+    )
+
+
+def _candidate_from_wallet_flow(record: dict[str, object]) -> SimulationCandidate:
+    return SimulationCandidate(
+        asset=str(record.get("asset") or ""),
+        market_id=str(record.get("market_id") or ""),
+        market_slug=_optional_str(record.get("market_slug")),
+        token_id=str(record.get("token_id") or ""),
+        question=_optional_str(record.get("question")),
+        lag_hours=_optional_int(record.get("horizon_hours")) or 1,
+        signal_correlation=float(_optional_int(record.get("learned_direction")) or 0),
+        robustness_grade=str(record.get("grade") or "WATCHLIST"),
+        candidate_source="wallet-flow-signal",
+        feature_name=_optional_str(record.get("feature_name")),
+        segment_type=_optional_str(record.get("segment_type")),
+        segment_value=_optional_str(record.get("segment_value")),
+        learned_direction=_optional_int(record.get("learned_direction")),
     )
 
 
@@ -294,10 +430,37 @@ def _is_simulatable(result: RobustnessResult) -> bool:
     return result.grade in {CandidateGrade.PROMISING, CandidateGrade.WATCHLIST}
 
 
+def _dedupe_wallet_candidates(candidates: Sequence[SimulationCandidate]) -> list[SimulationCandidate]:
+    # 1) remove exact duplicates by source dimensions
+    by_exact: dict[tuple[object, ...], SimulationCandidate] = {}
+    for candidate in candidates:
+        key = (
+            candidate.asset,
+            candidate.market_id,
+            candidate.lag_hours,
+            candidate.feature_name,
+            candidate.segment_type,
+            candidate.segment_value,
+        )
+        if key not in by_exact:
+            by_exact[key] = candidate
+
+    # 2) prefer the first/highest-ranked entry per asset/market/horizon to avoid overlap
+    by_bucket: dict[tuple[str, str, int], SimulationCandidate] = {}
+    for candidate in by_exact.values():
+        bucket = (candidate.asset, candidate.market_id, candidate.lag_hours)
+        if bucket not in by_bucket:
+            by_bucket[bucket] = candidate
+    return list(by_bucket.values())
+
+
 def _load_simulation_observations(
     con: duckdb.DuckDBPyConnection,
     candidate: SimulationCandidate,
 ) -> list[SimulationObservation]:
+    if candidate.candidate_source == "wallet-flow-signal":
+        return _load_wallet_flow_observations(con, candidate)
+
     rows = con.execute(
         """
         WITH signals AS (
@@ -350,6 +513,242 @@ def _load_simulation_observations(
         )
         for row in rows
     ]
+
+
+def _load_wallet_flow_observations(
+    con: duckdb.DuckDBPyConnection,
+    candidate: SimulationCandidate,
+) -> list[SimulationObservation]:
+    rows = con.execute(
+        """
+        WITH copy_hourly AS (
+          SELECT
+            market_id,
+            asset,
+            event_time_ns - (event_time_ns % 3600000000000) AS flow_hour_ns,
+            count(*) AS copy_flow_count
+          FROM polymarket_copy_flow_events
+          GROUP BY market_id, asset, flow_hour_ns
+        ),
+        flow_base AS (
+          SELECT
+            f.market_id,
+            f.asset,
+            f.open_time_ns,
+            f.buy_volume_usdc,
+            f.sell_volume_usdc,
+            f.net_flow_usdc,
+            abs(f.net_flow_usdc) AS abs_net_flow_usdc,
+            f.unique_active_wallets,
+            f.large_trade_count,
+            f.whale_flow_score,
+            coalesce(c.copy_flow_count, 0) AS copy_flow_count,
+            f.net_flow_usdc - lag(f.net_flow_usdc, 4) OVER (
+              PARTITION BY f.market_id, f.asset ORDER BY f.open_time_ns
+            ) AS flow_momentum_4h,
+            f.net_flow_usdc - lag(f.net_flow_usdc, 24) OVER (
+              PARTITION BY f.market_id, f.asset ORDER BY f.open_time_ns
+            ) AS flow_momentum_24h
+          FROM polymarket_market_flow_hourly f
+          LEFT JOIN copy_hourly c
+            ON c.market_id = f.market_id
+           AND c.asset = f.asset
+           AND c.flow_hour_ns = f.open_time_ns
+        ),
+        flow_quantiles AS (
+          SELECT
+            percentile_cont(0.75) WITHIN GROUP (ORDER BY abs(whale_flow_score)) AS whale_p75,
+            percentile_cont(0.75) WITHIN GROUP (ORDER BY unique_active_wallets) AS wallets_p75
+          FROM flow_base
+          WHERE market_id = ?
+            AND asset = ?
+        ),
+        signals AS (
+          SELECT
+            a.open_time_ns,
+            a.poly_price_change,
+            a.crypto_close,
+            ln(exit_bar.close / NULLIF(entry_bar.close, 0)) AS forward_log_return,
+            f.open_time_ns AS flow_time_ns,
+            f.buy_volume_usdc,
+            f.sell_volume_usdc,
+            f.net_flow_usdc,
+            f.abs_net_flow_usdc,
+            f.unique_active_wallets,
+            f.large_trade_count,
+            f.whale_flow_score,
+            f.copy_flow_count,
+            f.flow_momentum_4h,
+            f.flow_momentum_24h,
+            q.whale_p75,
+            q.wallets_p75
+          FROM crypto_polymarket_aligned a
+          CROSS JOIN flow_quantiles q
+          LEFT JOIN LATERAL (
+            SELECT *
+            FROM flow_base f
+            WHERE f.market_id = a.market_id
+              AND f.asset = upper(a.asset)
+              AND f.open_time_ns <= a.open_time_ns
+            ORDER BY f.open_time_ns DESC
+            LIMIT 1
+          ) f ON TRUE
+          JOIN crypto_returns entry_bar
+            ON entry_bar.symbol = ? || 'USDT'
+           AND entry_bar.interval = '1h'
+           AND entry_bar.open_time_ns = a.open_time_ns + ?
+          JOIN crypto_returns exit_bar
+            ON exit_bar.symbol = ? || 'USDT'
+           AND exit_bar.interval = '1h'
+           AND exit_bar.open_time_ns = a.open_time_ns + ?
+          WHERE a.token_id = ?
+            AND a.market_id = ?
+            AND a.poly_price_change IS NOT NULL
+            AND a.crypto_close IS NOT NULL
+        )
+        SELECT *
+        FROM signals
+        ORDER BY open_time_ns
+        """,
+        [
+            candidate.market_id,
+            candidate.asset,
+            candidate.asset,
+            HOUR_NS,
+            candidate.asset,
+            (candidate.lag_hours + 1) * HOUR_NS,
+            candidate.token_id,
+            candidate.market_id,
+        ],
+    ).fetchall()
+
+    observations: list[SimulationObservation] = []
+    for row in rows:
+        (
+            open_time_ns,
+            poly_price_change,
+            crypto_close,
+            forward_log_return,
+            _flow_time_ns,
+            buy_volume_usdc,
+            sell_volume_usdc,
+            net_flow_usdc,
+            abs_net_flow_usdc,
+            unique_active_wallets,
+            large_trade_count,
+            whale_flow_score,
+            copy_flow_count,
+            flow_momentum_4h,
+            flow_momentum_24h,
+            whale_p75,
+            wallets_p75,
+        ) = row
+
+        whale_bucket = _bucket_whale(_optional_float(whale_flow_score) or 0.0, _optional_float(whale_p75) or 0.0)
+        active_bucket = _bucket_active_wallets(_optional_int(unique_active_wallets) or 0, _optional_float(wallets_p75) or 0.0)
+        copy_count = _optional_int(copy_flow_count) or 0
+        copy_bucket = "present" if copy_count > 0 else "absent"
+        flow_direction = _flow_direction(_optional_float(net_flow_usdc) or 0.0)
+        obs = SimulationObservation(
+            open_time_ns=int(open_time_ns),
+            poly_price_change=float(poly_price_change),
+            crypto_close=float(crypto_close),
+            forward_log_return=float(forward_log_return),
+            buy_volume_usdc=_optional_float(buy_volume_usdc),
+            sell_volume_usdc=_optional_float(sell_volume_usdc),
+            net_flow_usdc=_optional_float(net_flow_usdc),
+            abs_net_flow_usdc=_optional_float(abs_net_flow_usdc),
+            unique_active_wallets=_optional_int(unique_active_wallets),
+            large_trade_count=_optional_int(large_trade_count),
+            whale_flow_score=_optional_float(whale_flow_score),
+            copy_flow_count=copy_count,
+            flow_momentum_4h=_optional_float(flow_momentum_4h),
+            flow_momentum_24h=_optional_float(flow_momentum_24h),
+            flow_direction=flow_direction,
+            whale_flow_bucket=whale_bucket,
+            active_wallet_bucket=active_bucket,
+            copy_flow_bucket=copy_bucket,
+        )
+        if _wallet_segment_match(candidate, obs):
+            observations.append(obs)
+    return observations
+
+
+def _wallet_segment_match(candidate: SimulationCandidate, observation: SimulationObservation) -> bool:
+    if candidate.segment_type in (None, "", "all"):
+        return True
+    if candidate.segment_type == "flow_direction":
+        return observation.flow_direction == candidate.segment_value
+    if candidate.segment_type == "whale_flow_bucket":
+        return observation.whale_flow_bucket == candidate.segment_value
+    if candidate.segment_type == "active_wallet_bucket":
+        return observation.active_wallet_bucket == candidate.segment_value
+    if candidate.segment_type == "copy_flow_bucket":
+        return observation.copy_flow_bucket == candidate.segment_value
+    return True
+
+
+def _candidate_side(candidate: SimulationCandidate, observation: SimulationObservation) -> int:
+    if candidate.candidate_source == "wallet-flow-signal":
+        signal_value = _wallet_feature_signal_value(observation, candidate.feature_name)
+        return _wallet_feature_side(signal_value=signal_value, learned_direction=candidate.learned_direction)
+
+    if candidate.learned_direction is not None and candidate.candidate_source in {
+        "composite-signal",
+        "derivatives-regime",
+    }:
+        return _directional_side(
+            learned_direction=candidate.learned_direction,
+            signal_value=observation.poly_price_change,
+        )
+
+    return determine_side(
+        signal_correlation=candidate.signal_correlation,
+        probability_change=observation.poly_price_change,
+    )
+
+
+def _wallet_feature_signal_value(
+    observation: SimulationObservation,
+    feature_name: str | None,
+) -> float:
+    if feature_name == "buy_volume_usdc":
+        return observation.buy_volume_usdc or 0.0
+    if feature_name == "sell_volume_usdc":
+        return observation.sell_volume_usdc or 0.0
+    if feature_name == "net_flow_usdc":
+        return observation.net_flow_usdc or 0.0
+    if feature_name == "abs_net_flow_usdc":
+        return observation.abs_net_flow_usdc or 0.0
+    if feature_name == "unique_active_wallets":
+        return float(observation.unique_active_wallets or 0)
+    if feature_name == "large_trade_count":
+        return float(observation.large_trade_count or 0)
+    if feature_name == "whale_flow_score":
+        return observation.whale_flow_score or 0.0
+    if feature_name == "copy_flow_count":
+        return float(observation.copy_flow_count or 0)
+    if feature_name == "flow_momentum_4h":
+        return observation.flow_momentum_4h or 0.0
+    if feature_name == "flow_momentum_24h":
+        return observation.flow_momentum_24h or 0.0
+    return 0.0
+
+
+def _wallet_feature_side(*, signal_value: float, learned_direction: int | None) -> int:
+    if learned_direction is None or learned_direction == 0:
+        return 0
+    signal_sign = _sign(signal_value)
+    if signal_sign == 0:
+        return 0
+    return learned_direction * signal_sign
+
+
+def _directional_side(*, learned_direction: int, signal_value: float) -> int:
+    signal_sign = _sign(signal_value)
+    if learned_direction == 0 or signal_sign == 0:
+        return 0
+    return learned_direction * signal_sign
 
 
 def _result_from_trades(
@@ -676,3 +1075,56 @@ def _is_finite(value: float | None) -> bool:
 
 def _escape_md(value: str) -> str:
     return value.replace("|", "\\|")
+
+
+def _sign(value: float) -> int:
+    if value > 0:
+        return 1
+    if value < 0:
+        return -1
+    return 0
+
+
+def _optional_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _bucket_whale(whale_flow_score: float, whale_p75: float) -> str:
+    if whale_p75 > 0 and abs(whale_flow_score) >= whale_p75:
+        return "high"
+    return "normal"
+
+
+def _bucket_active_wallets(unique_active_wallets: int, wallets_p75: float) -> str:
+    if wallets_p75 > 0 and unique_active_wallets >= wallets_p75:
+        return "high"
+    return "normal"
+
+
+def _flow_direction(net_flow_usdc: float) -> str:
+    if net_flow_usdc > 0:
+        return "buy_dominant"
+    if net_flow_usdc < 0:
+        return "sell_dominant"
+    return "neutral"
