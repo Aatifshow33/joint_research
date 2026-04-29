@@ -34,6 +34,43 @@ joint-research ingest crypto-derivatives --symbols BTCUSDT,ETHUSDT,SOLUSDT,XRPUS
 duckdb data/warehouse/manifest.duckdb -c "select count(*) from polymarket_gamma_events"
 ```
 
+## Daily Manual Snapshot Loop (Paper-Only)
+
+This project includes a safe local operator loop for daily collection + research snapshotting:
+
+```bash
+bash scripts/collect_research_snapshot.sh
+```
+
+Dry-run (no network calls, no writes to ingest tables):
+
+```bash
+bash scripts/collect_research_snapshot.sh --dry-run
+```
+
+Custom staged backfill settings:
+
+```bash
+bash scripts/collect_research_snapshot.sh \
+  --stage stage_1_quick \
+  --limit-markets 75 \
+  --limit-events 2000 \
+  --min-volume 0
+```
+
+Artifacts are written to:
+
+- `artifacts/ops/snapshots/<timestamp>_summary.md`
+- `artifacts/ops/snapshots/<timestamp>_commands.log`
+- `artifacts/ops/snapshots/<timestamp>_warnings.log`
+
+Scope guardrails:
+
+- No live execution
+- No trade placement
+- No API key requirement
+- Research/paper workflow only
+
 ## Design rules
 
 1. **Append-only.** Every ingestion writes a new Parquet file. Existing files are never mutated. Rerunning a backfill is a no-op against duplicate keys; query views deduplicate.
