@@ -792,6 +792,120 @@ def ingest_polymarket_wallet_flow(
         typer.echo(f"  warning={warning}")
 
 
+@ingest_app.command("wallet-flow-backfill-plan")
+def ingest_wallet_flow_backfill_plan(
+    asset: str = typer.Option(
+        "ALL",
+        help="Asset scope: BTC|ETH|SOL|XRP|ALL.",
+    ),
+    stage: str = typer.Option(
+        "stage_1_quick",
+        help="Stage: stage_1_quick|stage_2_depth|stage_3_breadth.",
+    ),
+    execute: bool = typer.Option(
+        False,
+        "--execute",
+        help="Execute the selected stage using the existing polymarket-wallet-flow ingestor.",
+    ),
+    dry_run: bool = typer.Option(
+        True,
+        "--dry-run/--no-dry-run",
+        help="Dry-run mode (default). Automatically disabled when --execute is passed.",
+    ),
+    limit_markets: int | None = typer.Option(
+        None,
+        help="Optional stage market cap override.",
+    ),
+    limit_events: int = typer.Option(
+        2000,
+        help="Maximum rows to write when running in --execute mode.",
+    ),
+    min_volume: float = typer.Option(
+        0.0,
+        help="Minimum 1mo/total market volume required for plan eligibility.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_backfill_plan.md, wallet_flow_backfill_plan.csv, "
+            "and wallet_flow_coverage.csv."
+        ),
+    ),
+    warehouse_root: Path = typer.Option(None),
+) -> None:
+    """Build a safe staged wallet-flow backfill plan, and optionally execute one stage."""
+
+    from joint_research.ingest.wallet_flow_backfill_plan import (  # noqa: PLC0415
+        STAGE_ORDER,
+        run_wallet_flow_backfill_plan,
+    )
+
+    valid_assets = {"BTC", "ETH", "SOL", "XRP", "ALL"}
+    normalized_asset = asset.strip().upper()
+    if normalized_asset not in valid_assets:
+        raise typer.BadParameter("asset must be one of BTC|ETH|SOL|XRP|ALL")
+    if stage not in STAGE_ORDER:
+        raise typer.BadParameter("stage must be one of stage_1_quick|stage_2_depth|stage_3_breadth")
+
+    paths = _resolve_paths(warehouse_root)
+    result = run_wallet_flow_backfill_plan(
+        paths=paths,
+        output_dir=output_dir.resolve(),
+        asset=normalized_asset,
+        stage=stage,
+        limit_markets=limit_markets,
+        limit_events=limit_events,
+        min_volume=min_volume,
+        execute=execute,
+        dry_run=(dry_run and not execute),
+    )
+    typer.echo(
+        "EXPLORATORY ONLY - NOT TRADEABLE\n"
+        f"asset={normalized_asset} stage={result.selected_stage} "
+        f"stage_markets={result.selected_stage_markets} "
+        f"stage_1={result.stage_counts.get('stage_1_quick', 0)} "
+        f"stage_2={result.stage_counts.get('stage_2_depth', 0)} "
+        f"stage_3={result.stage_counts.get('stage_3_breadth', 0)} "
+        f"dry_run={not execute}"
+    )
+    typer.echo(f"plan_md={result.artifacts.plan_md}")
+    typer.echo(f"plan_csv={result.artifacts.plan_csv}")
+    typer.echo(f"coverage_csv={result.artifacts.coverage_csv}")
+    typer.echo(
+        f"coverage_before wallet_flow_rows={result.before.wallet_flow_rows} "
+        f"trade_rows={result.before.trade_rows} "
+        f"copy_rows={result.before.copy_rows} "
+        f"market_flow_hourly_rows={result.before.market_flow_hourly_rows} "
+        f"whale_flow_hourly_rows={result.before.whale_flow_hourly_rows}"
+    )
+
+    if result.execution is None:
+        return
+
+    execution = result.execution
+    typer.echo(
+        f"executed stage={execution.stage} "
+        f"rows_written={execution.rows_written} "
+        f"trade_rows={execution.trade_rows_written} "
+        f"copy_rows={execution.copy_rows_written} "
+        f"markets_scanned={execution.markets_scanned} "
+        f"markets_with_rows={execution.markets_with_rows} "
+        f"skipped_markets={execution.skipped_markets} "
+        f"sources={','.join(execution.source_clients) if execution.source_clients else '(none)'}"
+    )
+    typer.echo(
+        f"coverage_after wallet_flow_rows={execution.after.wallet_flow_rows} "
+        f"trade_rows={execution.after.trade_rows} "
+        f"copy_rows={execution.after.copy_rows} "
+        f"market_flow_hourly_rows={execution.after.market_flow_hourly_rows} "
+        f"whale_flow_hourly_rows={execution.after.whale_flow_hourly_rows}"
+    )
+    for warning in execution.warnings:
+        typer.echo(f"  warning={warning}")
+
+
 @research_app.command("event-study")
 def research_event_study(
     min_trade_size_usdc: float = typer.Option(
