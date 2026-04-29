@@ -449,6 +449,81 @@ def research_composite_signal(
         )
 
 
+@research_app.command("derivatives-regime")
+def research_derivatives_regime(
+    min_segment_samples: int = typer.Option(
+        24,
+        help="Minimum sample count for funding/basis segment analysis.",
+    ),
+    min_combined_samples: int = typer.Option(
+        36,
+        help="Minimum sample count for combined regime segments.",
+    ),
+    train_fraction: float = typer.Option(0.6, help="Temporal train split fraction."),
+    output_dir: Path = typer.Option(
+        Path("artifacts/research/derivatives_regime"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for derivatives_regime_summary.md, derivatives_regime_results.csv, "
+            "and derivatives_regime_candidates.json."
+        ),
+    ),
+    show_top: int = typer.Option(10, help="Print the top-N derivatives-regime candidates."),
+    warehouse_root: Path = typer.Option(None),
+) -> None:
+    """Run derivatives-regime-conditioned Polymarket -> crypto signal analysis."""
+
+    from joint_research.research.derivatives_regime import (  # noqa: PLC0415
+        RegimeCandidateGrade,
+        run_derivatives_regime_study,
+        write_derivatives_regime_report,
+    )
+
+    paths = _resolve_paths(warehouse_root)
+    results = run_derivatives_regime_study(
+        paths=paths,
+        min_segment_samples=min_segment_samples,
+        min_combined_samples=min_combined_samples,
+        train_fraction=train_fraction,
+    )
+    report_paths = write_derivatives_regime_report(
+        output_dir=output_dir.resolve(),
+        results=results,
+    )
+    counts = {
+        grade.value: sum(1 for result in results if result.grade is grade)
+        for grade in RegimeCandidateGrade
+    }
+    typer.echo(
+        "EXPLORATORY ONLY - NOT TRADEABLE\n"
+        f"segment_rows={len(results)} "
+        f"simulation_ready={counts['SIMULATION_READY']} "
+        f"watchlist={counts['WATCHLIST']} "
+        f"weak={counts['WEAK']} "
+        f"rejected={counts['REJECTED']}"
+    )
+    typer.echo(f"summary={report_paths.summary_md}")
+    typer.echo(f"results_csv={report_paths.results_csv}")
+    typer.echo(f"candidates_json={report_paths.candidates_json}")
+
+    candidates = [r for r in results if r.grade is not RegimeCandidateGrade.REJECTED][:show_top]
+    if not candidates:
+        typer.echo("no regime candidates survived beyond REJECTED.")
+        raise typer.Exit(code=0)
+
+    typer.echo(f"\ntop {show_top} derivatives-regime candidates:")
+    for result in candidates:
+        typer.echo(
+            f"  rank={result.rank:>2} grade={result.grade.value:<16} "
+            f"asset={result.asset:>4} horizon={result.horizon_hours:>2}h "
+            f"segment={result.segment_type}:{result.segment_value} "
+            f"improvement={result.test_improvement_over_baseline:+.5f} "
+            f"win_rate={result.test_win_rate:.2f} "
+            f"market={result.market_slug or result.market_id}"
+        )
+
+
 @research_app.command("simulate")
 def research_simulate(
     starting_capital: float = typer.Option(200.0, help="Paper bankroll in USD."),
