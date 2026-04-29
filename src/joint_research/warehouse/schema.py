@@ -159,6 +159,36 @@ POLYMARKET_WALLET_ACTIVITY = _table(
     primary_key=("wallet_address", "source_record_id"),
 )
 
+# ---------------------------------------------------------------------------
+# Polymarket wallet/trader flow (trade + optional copy-flow evidence)
+# ---------------------------------------------------------------------------
+
+POLYMARKET_WALLET_FLOW = _table(
+    name="polymarket_wallet_flow",
+    extra_fields=[
+        pa.field("record_type", pa.string(), nullable=False),
+        pa.field("source_record_id", pa.string(), nullable=False),
+        pa.field("wallet_address", pa.string(), nullable=True),
+        pa.field("leader_wallet", pa.string(), nullable=True),
+        pa.field("follower_wallet", pa.string(), nullable=True),
+        pa.field("market_id", pa.string(), nullable=True),
+        pa.field("condition_id", pa.string(), nullable=True),
+        pa.field("token_id", pa.string(), nullable=True),
+        pa.field("asset", pa.string(), nullable=True),
+        pa.field("side", pa.string(), nullable=True),
+        pa.field("action", pa.string(), nullable=True),
+        pa.field("size_base", pa.float64(), nullable=True),
+        pa.field("notional_usdc", pa.float64(), nullable=True),
+        pa.field("price_probability", pa.float64(), nullable=True),
+        pa.field("flow_sign", pa.int32(), nullable=True),
+        pa.field("is_large_trade", pa.bool_(), nullable=True),
+        pa.field("lag_seconds", pa.int32(), nullable=True),
+        pa.field("relationship_confidence", pa.float64(), nullable=True),
+        pa.field("relationship_status", pa.string(), nullable=True),
+    ],
+    primary_key=("record_type", "source_record_id", "event_time_ns"),
+)
+
 
 # ---------------------------------------------------------------------------
 # Stock OHLCV (yfinance default; venue-agnostic schema)
@@ -243,6 +273,7 @@ ALL_TABLES: dict[str, TableSchema] = {
     POLYMARKET_CRYPTO_MARKETS.name: POLYMARKET_CRYPTO_MARKETS,
     POLYMARKET_PRICE_HISTORY.name: POLYMARKET_PRICE_HISTORY,
     POLYMARKET_WALLET_ACTIVITY.name: POLYMARKET_WALLET_ACTIVITY,
+    POLYMARKET_WALLET_FLOW.name: POLYMARKET_WALLET_FLOW,
     STOCK_OHLCV.name: STOCK_OHLCV,
     MACRO_SERIES.name: MACRO_SERIES,
     CRYPTO_OHLCV.name: CRYPTO_OHLCV,

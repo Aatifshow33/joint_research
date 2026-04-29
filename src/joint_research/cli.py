@@ -634,6 +634,48 @@ def ingest_wallet_activity(
     )
 
 
+@ingest_app.command("polymarket-wallet-flow")
+def ingest_polymarket_wallet_flow(
+    limit_markets: int = typer.Option(20, help="Top-N crypto-tagged markets to scope ingestion."),
+    limit_events: int = typer.Option(500, help="Maximum rows to write for this run."),
+    large_trade_usdc: float = typer.Option(
+        1_000.0,
+        help="USDC notional threshold used to tag large trades.",
+    ),
+    include_copy_signals: bool = typer.Option(
+        True,
+        "--include-copy-signals/--no-copy-signals",
+        help="Include copy-trader relationship evidence rows when available.",
+    ),
+    warehouse_root: Path = typer.Option(None),
+) -> None:
+    """Pull public Polymarket wallet/trader flow into the warehouse."""
+
+    from joint_research.ingest.polymarket_wallet_flow import (  # noqa: PLC0415
+        ingest_polymarket_wallet_flow as run,
+    )
+
+    paths = _resolve_paths(warehouse_root)
+    result = asyncio.run(
+        run(
+            paths=paths,
+            limit_markets=limit_markets,
+            limit_events=limit_events,
+            large_trade_usdc=large_trade_usdc,
+            include_copy_signals=include_copy_signals,
+        )
+    )
+    typer.echo(
+        f"rows_written={result.rows_written} "
+        f"trade_rows={result.trade_rows} "
+        f"copy_rows={result.copy_rows} "
+        f"sources={','.join(result.source_clients) if result.source_clients else '(none)'} "
+        f"shard={result.shard_path or '(none)'}"
+    )
+    for warning in result.warnings:
+        typer.echo(f"  warning={warning}")
+
+
 @research_app.command("event-study")
 def research_event_study(
     min_trade_size_usdc: float = typer.Option(

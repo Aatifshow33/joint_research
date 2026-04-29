@@ -467,6 +467,118 @@ def _register_analytic_views(con: duckdb.DuckDBPyConnection) -> None:
         """
     )
 
+    # ----- Polymarket wallet/trader flow -----
+
+    con.execute(
+        """
+        CREATE OR REPLACE VIEW polymarket_wallet_trades AS
+        SELECT
+          event_time_ns,
+          source,
+          payload_hash,
+          payload_json,
+          source_record_id,
+          wallet_address,
+          market_id,
+          condition_id,
+          token_id,
+          asset,
+          side,
+          action,
+          size_base,
+          notional_usdc,
+          price_probability,
+          flow_sign,
+          is_large_trade
+        FROM polymarket_wallet_flow
+        WHERE record_type = 'wallet_trade'
+        """
+    )
+
+    con.execute(
+        """
+        CREATE OR REPLACE VIEW polymarket_market_flow_hourly AS
+        WITH trades AS (
+          SELECT
+            market_id,
+            condition_id,
+            token_id,
+            asset,
+            wallet_address,
+            event_time_ns - (event_time_ns % 3600000000000) AS hour_open_time_ns,
+            coalesce(abs(notional_usdc), 0.0) AS notional_abs_usdc,
+            coalesce(flow_sign, 0) AS flow_sign,
+            coalesce(is_large_trade, false) AS is_large_trade
+          FROM polymarket_wallet_trades
+        )
+        SELECT
+          market_id,
+          condition_id,
+          token_id,
+          asset,
+          hour_open_time_ns AS open_time_ns,
+          sum(CASE WHEN flow_sign > 0 THEN notional_abs_usdc ELSE 0 END) AS buy_volume_usdc,
+          sum(CASE WHEN flow_sign < 0 THEN notional_abs_usdc ELSE 0 END) AS sell_volume_usdc,
+          sum(flow_sign * notional_abs_usdc) AS net_flow_usdc,
+          count(DISTINCT wallet_address) AS unique_active_wallets,
+          sum(CASE WHEN is_large_trade THEN 1 ELSE 0 END) AS large_trade_count,
+          CASE
+            WHEN sum(notional_abs_usdc) <= 0 THEN 0.0
+            ELSE (sum(flow_sign * notional_abs_usdc) / sum(notional_abs_usdc))
+                 * ln(1 + sum(CASE WHEN is_large_trade THEN 1 ELSE 0 END))
+          END AS whale_flow_score
+        FROM trades
+        GROUP BY market_id, condition_id, token_id, asset, hour_open_time_ns
+        """
+    )
+
+    con.execute(
+        """
+        CREATE OR REPLACE VIEW polymarket_whale_flow_hourly AS
+        SELECT
+          market_id,
+          condition_id,
+          token_id,
+          asset,
+          open_time_ns,
+          buy_volume_usdc,
+          sell_volume_usdc,
+          net_flow_usdc,
+          unique_active_wallets,
+          large_trade_count,
+          whale_flow_score
+        FROM polymarket_market_flow_hourly
+        WHERE large_trade_count > 0 OR abs(net_flow_usdc) > 0
+        """
+    )
+
+    con.execute(
+        """
+        CREATE OR REPLACE VIEW polymarket_copy_flow_events AS
+        SELECT
+          event_time_ns,
+          source,
+          payload_hash,
+          payload_json,
+          source_record_id,
+          wallet_address,
+          leader_wallet,
+          follower_wallet,
+          market_id,
+          condition_id,
+          token_id,
+          asset,
+          side,
+          action,
+          flow_sign,
+          lag_seconds,
+          relationship_confidence,
+          relationship_status
+        FROM polymarket_wallet_flow
+        WHERE record_type = 'copy_event'
+        """
+    )
+
     # ----- Daily aggregations -----
 
     # Daily crypto returns: bucket hourly bars to UTC days, take last close as
