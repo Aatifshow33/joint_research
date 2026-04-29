@@ -524,6 +524,82 @@ def research_derivatives_regime(
         )
 
 
+@research_app.command("wallet-flow-signal")
+def research_wallet_flow_signal(
+    min_segment_samples: int = typer.Option(
+        24,
+        help="Minimum sample count for segmented wallet-flow analysis.",
+    ),
+    min_feature_samples: int = typer.Option(
+        36,
+        help="Minimum sample count for all-sample feature rows.",
+    ),
+    train_fraction: float = typer.Option(0.6, help="Temporal train split fraction."),
+    output_dir: Path = typer.Option(
+        Path("artifacts/research/wallet_flow_signal"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_signal_summary.md, wallet_flow_signal_results.csv, "
+            "and wallet_flow_signal_candidates.json."
+        ),
+    ),
+    show_top: int = typer.Option(10, help="Print the top-N wallet-flow candidates."),
+    warehouse_root: Path = typer.Option(None),
+) -> None:
+    """Run wallet-flow-conditioned Polymarket -> crypto signal analysis."""
+
+    from joint_research.research.wallet_flow_signal import (  # noqa: PLC0415
+        WalletFlowCandidateGrade,
+        run_wallet_flow_signal_study,
+        write_wallet_flow_signal_report,
+    )
+
+    paths = _resolve_paths(warehouse_root)
+    results = run_wallet_flow_signal_study(
+        paths=paths,
+        min_segment_samples=min_segment_samples,
+        min_feature_samples=min_feature_samples,
+        train_fraction=train_fraction,
+    )
+    report_paths = write_wallet_flow_signal_report(
+        output_dir=output_dir.resolve(),
+        results=results,
+    )
+    counts = {
+        grade.value: sum(1 for result in results if result.grade is grade)
+        for grade in WalletFlowCandidateGrade
+    }
+    typer.echo(
+        "EXPLORATORY ONLY - NOT TRADEABLE\n"
+        f"segment_rows={len(results)} "
+        f"simulation_ready={counts['SIMULATION_READY']} "
+        f"watchlist={counts['WATCHLIST']} "
+        f"weak={counts['WEAK']} "
+        f"rejected={counts['REJECTED']}"
+    )
+    typer.echo(f"summary={report_paths.summary_md}")
+    typer.echo(f"results_csv={report_paths.results_csv}")
+    typer.echo(f"candidates_json={report_paths.candidates_json}")
+
+    candidates = [r for r in results if r.grade is not WalletFlowCandidateGrade.REJECTED][:show_top]
+    if not candidates:
+        typer.echo("no wallet-flow candidates survived beyond REJECTED.")
+        raise typer.Exit(code=0)
+
+    typer.echo(f"\ntop {show_top} wallet-flow candidates:")
+    for result in candidates:
+        typer.echo(
+            f"  rank={result.rank:>2} grade={result.grade.value:<16} "
+            f"asset={result.asset:>4} horizon={result.horizon_hours:>2}h "
+            f"feature={result.feature_name} "
+            f"segment={result.segment_type}:{result.segment_value} "
+            f"improvement={result.test_improvement_over_baseline:+.5f} "
+            f"win_rate={result.test_win_rate:.2f} "
+            f"market={result.market_slug or result.market_id}"
+        )
+
+
 @research_app.command("simulate")
 def research_simulate(
     starting_capital: float = typer.Option(200.0, help="Paper bankroll in USD."),
