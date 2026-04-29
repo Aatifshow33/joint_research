@@ -18,6 +18,11 @@ from joint_research.warehouse.paths import WarehousePaths
 from joint_research.warehouse.views import register_views
 
 HORIZONS: tuple[int, ...] = (1, 4, 24)
+COST_BUFFER_RETURN = 0.004
+MIN_UNIQUE_FLOW_HOURS = 24
+MIN_ACTIVE_WALLET_COVERAGE = 0.50
+MIN_NON_ZERO_NET_FLOW_COVERAGE = 0.50
+DUPLICATE_SEGMENT_IMPROVEMENT_DELTA = 0.00035
 
 
 class WalletFlowCandidateGrade(str, Enum):
@@ -25,6 +30,22 @@ class WalletFlowCandidateGrade(str, Enum):
     WEAK = "WEAK"
     WATCHLIST = "WATCHLIST"
     SIMULATION_READY = "SIMULATION_READY"
+
+
+@dataclass(frozen=True)
+class WalletFlowCoverage:
+    wallet_flow_rows: int
+    market_flow_hourly_rows: int
+    whale_flow_hourly_rows: int
+    copy_flow_rows: int
+
+
+@dataclass(frozen=True)
+class WalletFlowStudyDetails:
+    results: list[WalletFlowSignalResult]
+    segment_rows_before_dedup: int
+    segment_rows_after_dedup: int
+    coverage: WalletFlowCoverage
 
 
 @dataclass(frozen=True)
@@ -85,9 +106,14 @@ class WalletFlowSignalResult:
     stability: float
     baseline_test_average_forward_return: float
     test_improvement_over_baseline: float
+    net_test_improvement_after_cost: float
+    unique_flow_hours: int
+    active_wallet_coverage: float
+    non_zero_net_flow_coverage: float
     score: float
     grade: WalletFlowCandidateGrade
     filter_reason: str
+    warnings: str
 
 
 @dataclass(frozen=True)
@@ -168,14 +194,45 @@ def run_wallet_flow_signal_study(
     min_feature_samples: int = 36,
     train_fraction: float = 0.6,
 ) -> list[WalletFlowSignalResult]:
+    return run_wallet_flow_signal_study_with_details(
+        paths=paths,
+        min_segment_samples=min_segment_samples,
+        min_feature_samples=min_feature_samples,
+        train_fraction=train_fraction,
+    ).results
+
+
+def run_wallet_flow_signal_study_with_details(
+    *,
+    paths: WarehousePaths,
+    min_segment_samples: int = 24,
+    min_feature_samples: int = 36,
+    train_fraction: float = 0.6,
+) -> WalletFlowStudyDetails:
     con = duckdb.connect()
     register_views(con, paths)
     observations = load_wallet_flow_observations(con)
-    return analyze_wallet_flow_segments(
+    coverage = load_wallet_flow_coverage(con)
+    analysis = analyze_wallet_flow_segments_with_details(
         observations,
         min_segment_samples=min_segment_samples,
         min_feature_samples=min_feature_samples,
         train_fraction=train_fraction,
+    )
+    return WalletFlowStudyDetails(
+        results=analysis.results,
+        segment_rows_before_dedup=analysis.segment_rows_before_dedup,
+        segment_rows_after_dedup=analysis.segment_rows_after_dedup,
+        coverage=coverage,
+    )
+
+
+def load_wallet_flow_coverage(con: duckdb.DuckDBPyConnection) -> WalletFlowCoverage:
+    return WalletFlowCoverage(
+        wallet_flow_rows=_safe_count(con, "SELECT count(*) FROM polymarket_wallet_flow"),
+        market_flow_hourly_rows=_safe_count(con, "SELECT count(*) FROM polymarket_market_flow_hourly"),
+        whale_flow_hourly_rows=_safe_count(con, "SELECT count(*) FROM polymarket_whale_flow_hourly"),
+        copy_flow_rows=_safe_count(con, "SELECT count(*) FROM polymarket_copy_flow_events"),
     )
 
 
@@ -331,6 +388,13 @@ def load_wallet_flow_observations(con: duckdb.DuckDBPyConnection) -> list[Wallet
     return observations
 
 
+@dataclass(frozen=True)
+class _AnalysisDetails:
+    results: list[WalletFlowSignalResult]
+    segment_rows_before_dedup: int
+    segment_rows_after_dedup: int
+
+
 def analyze_wallet_flow_segments(
     observations: Sequence[WalletFlowObservation],
     *,
@@ -338,12 +402,27 @@ def analyze_wallet_flow_segments(
     min_feature_samples: int = 36,
     train_fraction: float = 0.6,
 ) -> list[WalletFlowSignalResult]:
+    return analyze_wallet_flow_segments_with_details(
+        observations,
+        min_segment_samples=min_segment_samples,
+        min_feature_samples=min_feature_samples,
+        train_fraction=train_fraction,
+    ).results
+
+
+def analyze_wallet_flow_segments_with_details(
+    observations: Sequence[WalletFlowObservation],
+    *,
+    min_segment_samples: int = 24,
+    min_feature_samples: int = 36,
+    train_fraction: float = 0.6,
+) -> _AnalysisDetails:
     by_market_horizon: dict[tuple[str, str, str, int], list[WalletFlowObservation]] = defaultdict(list)
     for obs in observations:
         key = (obs.asset, obs.market_id, obs.token_id, obs.horizon_hours)
         by_market_horizon[key].append(obs)
 
-    out: list[WalletFlowSignalResult] = []
+    raw_results: list[WalletFlowSignalResult] = []
     for group in by_market_horizon.values():
         if not group:
             continue
@@ -352,11 +431,12 @@ def analyze_wallet_flow_segments(
         baseline_test_avg = baseline_eval.test_average_forward_return
 
         segments: dict[tuple[str, str], list[WalletFlowObservation]] = defaultdict(list)
+        has_copy_flow = any(item.copy_flow_count > 0 for item in group)
         for obs in group:
             segments[("flow_direction", obs.flow_direction)].append(obs)
             segments[("whale_flow_bucket", obs.whale_bucket)].append(obs)
             segments[("active_wallet_bucket", obs.wallet_activity_bucket)].append(obs)
-            if any(item.copy_flow_count > 0 for item in group):
+            if has_copy_flow:
                 segments[("copy_flow_bucket", obs.copy_bucket)].append(obs)
 
         for feature in FEATURE_SPECS:
@@ -376,7 +456,7 @@ def analyze_wallet_flow_segments(
                 simplicity=feature.simplicity,
                 baseline_test_average_forward_return=baseline_test_avg,
             )
-            out.append(
+            raw_results.append(
                 _build_result(
                     context=feature_context,
                     observations=feature_obs,
@@ -403,7 +483,7 @@ def analyze_wallet_flow_segments(
                     simplicity=feature.simplicity * (0.9 if segment_type != "all" else 1.0),
                     baseline_test_average_forward_return=baseline_test_avg,
                 )
-                out.append(
+                raw_results.append(
                     _build_result(
                         context=context,
                         observations=seg_obs,
@@ -413,7 +493,12 @@ def analyze_wallet_flow_segments(
                     )
                 )
 
-    return rank_wallet_flow_results(out)
+    deduped = _dedupe_segment_candidates(raw_results)
+    return _AnalysisDetails(
+        results=rank_wallet_flow_results(deduped),
+        segment_rows_before_dedup=len(raw_results),
+        segment_rows_after_dedup=len(deduped),
+    )
 
 
 def evaluate_segment(
@@ -503,6 +588,7 @@ def write_wallet_flow_signal_report(
     *,
     output_dir: Path,
     results: Sequence[WalletFlowSignalResult],
+    study_details: WalletFlowStudyDetails | None = None,
     candidate_limit: int = 20,
 ) -> WalletFlowSignalReportPaths:
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -519,7 +605,7 @@ def write_wallet_flow_signal_report(
     candidates_json.write_text(
         json.dumps([_json_record(row) for row in candidates], indent=2, sort_keys=True) + "\n"
     )
-    summary_md.write_text(_render_summary(ordered, candidates))
+    summary_md.write_text(_render_summary(ordered, candidates, study_details=study_details))
     return WalletFlowSignalReportPaths(
         summary_md=summary_md,
         results_csv=results_csv,
@@ -537,24 +623,56 @@ def _build_result(
 ) -> WalletFlowSignalResult:
     evaluation = evaluate_segment(observations, predictor=predictor, train_fraction=train_fraction)
     improvement = evaluation.test_average_forward_return - context.baseline_test_average_forward_return
+    unique_flow_hours = len({obs.flow_time_ns if obs.flow_time_ns is not None else obs.open_time_ns for obs in observations})
+    active_wallet_coverage = (
+        sum(1 for obs in observations if obs.unique_active_wallets > 0) / len(observations)
+        if observations
+        else 0.0
+    )
+    non_zero_net_flow_coverage = (
+        sum(1 for obs in observations if abs(obs.net_flow_usdc) > 0.0) / len(observations)
+        if observations
+        else 0.0
+    )
+    net_improvement = improvement - COST_BUFFER_RETURN
+
     grade = grade_wallet_flow_candidate(
         sample_count=evaluation.sample_count,
         required_samples=required_samples,
         train_test_direction_match=evaluation.train_test_direction_match,
         test_improvement=improvement,
+        net_test_improvement=net_improvement,
         test_win_rate=evaluation.test_win_rate,
         stability=evaluation.stability,
         test_samples=evaluation.test_samples,
         learned_direction=evaluation.learned_direction,
+        unique_flow_hours=unique_flow_hours,
+        active_wallet_coverage=active_wallet_coverage,
+        non_zero_net_flow_coverage=non_zero_net_flow_coverage,
     )
 
     filter_reason = evaluation.filter_reason
     if evaluation.sample_count < required_samples:
         filter_reason = "insufficient_samples"
+    elif unique_flow_hours < MIN_UNIQUE_FLOW_HOURS:
+        filter_reason = "insufficient_unique_flow_hours"
+    elif active_wallet_coverage < MIN_ACTIVE_WALLET_COVERAGE:
+        filter_reason = "insufficient_active_wallet_coverage"
+    elif non_zero_net_flow_coverage < MIN_NON_ZERO_NET_FLOW_COVERAGE:
+        filter_reason = "insufficient_non_zero_net_flow_coverage"
     elif not evaluation.train_test_direction_match:
         filter_reason = "train_test_direction_mismatch"
-    elif improvement <= 0:
-        filter_reason = "no_improvement_over_baseline"
+    elif net_improvement <= 0:
+        filter_reason = "no_net_improvement_after_cost"
+
+    warnings = _build_warnings(
+        evaluation=evaluation,
+        required_samples=required_samples,
+        observations=observations,
+        unique_flow_hours=unique_flow_hours,
+        active_wallet_coverage=active_wallet_coverage,
+        non_zero_net_flow_coverage=non_zero_net_flow_coverage,
+    )
 
     score = _score_result(
         test_improvement=improvement,
@@ -594,9 +712,14 @@ def _build_result(
         stability=evaluation.stability,
         baseline_test_average_forward_return=context.baseline_test_average_forward_return,
         test_improvement_over_baseline=improvement,
+        net_test_improvement_after_cost=net_improvement,
+        unique_flow_hours=unique_flow_hours,
+        active_wallet_coverage=active_wallet_coverage,
+        non_zero_net_flow_coverage=non_zero_net_flow_coverage,
         score=score,
         grade=grade,
         filter_reason=filter_reason,
+        warnings=";".join(warnings),
     )
 
 
@@ -606,34 +729,190 @@ def grade_wallet_flow_candidate(
     required_samples: int,
     train_test_direction_match: bool,
     test_improvement: float,
+    net_test_improvement: float,
     test_win_rate: float,
     stability: float,
     test_samples: int,
     learned_direction: int,
+    unique_flow_hours: int,
+    active_wallet_coverage: float,
+    non_zero_net_flow_coverage: float,
 ) -> WalletFlowCandidateGrade:
-    if sample_count < required_samples or learned_direction == 0 or test_samples < 10:
+    if sample_count < required_samples or learned_direction == 0 or test_samples < 12:
+        return WalletFlowCandidateGrade.REJECTED
+    if unique_flow_hours < MIN_UNIQUE_FLOW_HOURS:
+        return WalletFlowCandidateGrade.REJECTED
+    if active_wallet_coverage < MIN_ACTIVE_WALLET_COVERAGE:
+        return WalletFlowCandidateGrade.REJECTED
+    if non_zero_net_flow_coverage < MIN_NON_ZERO_NET_FLOW_COVERAGE:
+        return WalletFlowCandidateGrade.REJECTED
+    if net_test_improvement <= 0:
         return WalletFlowCandidateGrade.REJECTED
     if not train_test_direction_match:
         return WalletFlowCandidateGrade.WEAK
-    if test_improvement <= 0:
-        return WalletFlowCandidateGrade.REJECTED
     if (
-        test_improvement >= 0.0006
-        and test_win_rate >= 0.57
-        and stability >= 0.60
-        and sample_count >= max(required_samples, 64)
+        test_improvement >= 0.0008
+        and net_test_improvement >= 0.0002
+        and test_win_rate >= 0.58
+        and stability >= 0.62
+        and sample_count >= max(required_samples, 80)
+        and unique_flow_hours >= 48
+        and active_wallet_coverage >= 0.70
+        and non_zero_net_flow_coverage >= 0.70
     ):
         return WalletFlowCandidateGrade.SIMULATION_READY
     if (
-        test_improvement >= 0.00025
-        and test_win_rate >= 0.54
-        and stability >= 0.50
-        and sample_count >= max(required_samples, 40)
+        test_improvement >= 0.0004
+        and net_test_improvement > 0
+        and test_win_rate >= 0.55
+        and stability >= 0.52
+        and sample_count >= max(required_samples, 48)
+        and unique_flow_hours >= 32
+        and active_wallet_coverage >= 0.60
+        and non_zero_net_flow_coverage >= 0.60
     ):
         return WalletFlowCandidateGrade.WATCHLIST
     if test_improvement > 0 and test_win_rate >= 0.50:
         return WalletFlowCandidateGrade.WEAK
     return WalletFlowCandidateGrade.REJECTED
+
+
+def _dedupe_segment_candidates(results: Sequence[WalletFlowSignalResult]) -> list[WalletFlowSignalResult]:
+    by_key: dict[tuple[str, str, str, int, str], list[WalletFlowSignalResult]] = defaultdict(list)
+    for row in results:
+        key = (row.asset, row.market_id, row.token_id, row.horizon_hours, row.feature_name)
+        by_key[key].append(row)
+
+    deduped: list[WalletFlowSignalResult] = []
+    for group in by_key.values():
+        ordered_group = sorted(group, key=_dedupe_sort_key)
+        best = ordered_group[0]
+        for challenger in ordered_group[1:]:
+            if _can_override_simple_segment(best=best, challenger=challenger):
+                best = challenger
+
+        if len(group) > 1:
+            warnings = set(_parse_warnings(best.warnings))
+            warnings.add("duplicate_segment_competition")
+            best = _replace_warnings(best, warnings)
+        deduped.append(best)
+    return deduped
+
+
+def _dedupe_sort_key(row: WalletFlowSignalResult) -> tuple[float, ...]:
+    return (
+        _segment_priority(row.segment_type),
+        -row.test_improvement_over_baseline,
+        -row.test_samples,
+        -row.stability,
+        -row.score,
+    )
+
+
+def _segment_priority(segment_type: str) -> int:
+    priorities = {
+        "all": 0,
+        "active_wallet_bucket": 1,
+        "whale_flow_bucket": 2,
+        "copy_flow_bucket": 3,
+        "flow_direction": 4,
+    }
+    return priorities.get(segment_type, 5)
+
+
+def _can_override_simple_segment(*, best: WalletFlowSignalResult, challenger: WalletFlowSignalResult) -> bool:
+    if challenger.grade is WalletFlowCandidateGrade.REJECTED:
+        return False
+    grade_rank = {
+        WalletFlowCandidateGrade.SIMULATION_READY: 0,
+        WalletFlowCandidateGrade.WATCHLIST: 1,
+        WalletFlowCandidateGrade.WEAK: 2,
+        WalletFlowCandidateGrade.REJECTED: 3,
+    }
+    if grade_rank[challenger.grade] > grade_rank[best.grade]:
+        return False
+
+    improvement_clear = (
+        challenger.test_improvement_over_baseline
+        >= best.test_improvement_over_baseline + DUPLICATE_SEGMENT_IMPROVEMENT_DELTA
+    )
+    sample_clear = (
+        challenger.sample_count >= max(MIN_UNIQUE_FLOW_HOURS, int(best.sample_count * 0.5))
+        and challenger.test_samples >= max(12, int(best.test_samples * 0.5))
+    )
+    stable_enough = challenger.stability >= max(0.0, best.stability - 0.05)
+    return improvement_clear and sample_clear and stable_enough
+
+
+def _build_warnings(
+    *,
+    evaluation: _SplitEvaluation,
+    required_samples: int,
+    observations: Sequence[WalletFlowObservation],
+    unique_flow_hours: int,
+    active_wallet_coverage: float,
+    non_zero_net_flow_coverage: float,
+) -> list[str]:
+    warnings: list[str] = []
+    if evaluation.sample_count < max(required_samples + 8, 48) or unique_flow_hours < max(MIN_UNIQUE_FLOW_HOURS + 8, 32):
+        warnings.append("low_sample_warning")
+    copy_present = sum(1 for obs in observations if obs.copy_flow_count > 0)
+    if copy_present > 0 and copy_present / max(1, len(observations)) < 0.10:
+        warnings.append("thin_copy_flow_warning")
+    if not evaluation.train_test_direction_match or evaluation.stability < 0.45:
+        warnings.append("unstable_train_test_warning")
+    if active_wallet_coverage < MIN_ACTIVE_WALLET_COVERAGE:
+        warnings.append("low_active_wallet_coverage")
+    if non_zero_net_flow_coverage < MIN_NON_ZERO_NET_FLOW_COVERAGE:
+        warnings.append("low_non_zero_net_flow_coverage")
+    return warnings
+
+
+def _replace_warnings(row: WalletFlowSignalResult, warnings: set[str]) -> WalletFlowSignalResult:
+    return WalletFlowSignalResult(
+        rank=row.rank,
+        asset=row.asset,
+        market_id=row.market_id,
+        market_slug=row.market_slug,
+        token_id=row.token_id,
+        question=row.question,
+        horizon_hours=row.horizon_hours,
+        feature_name=row.feature_name,
+        segment_type=row.segment_type,
+        segment_value=row.segment_value,
+        simplicity=row.simplicity,
+        sample_count=row.sample_count,
+        train_samples=row.train_samples,
+        test_samples=row.test_samples,
+        learned_direction=row.learned_direction,
+        train_direction_match_rate=row.train_direction_match_rate,
+        test_direction_match_rate=row.test_direction_match_rate,
+        train_average_forward_return=row.train_average_forward_return,
+        test_average_forward_return=row.test_average_forward_return,
+        train_win_rate=row.train_win_rate,
+        test_win_rate=row.test_win_rate,
+        full_correlation=row.full_correlation,
+        train_correlation=row.train_correlation,
+        test_correlation=row.test_correlation,
+        train_test_direction_match=row.train_test_direction_match,
+        stability=row.stability,
+        baseline_test_average_forward_return=row.baseline_test_average_forward_return,
+        test_improvement_over_baseline=row.test_improvement_over_baseline,
+        net_test_improvement_after_cost=row.net_test_improvement_after_cost,
+        unique_flow_hours=row.unique_flow_hours,
+        active_wallet_coverage=row.active_wallet_coverage,
+        non_zero_net_flow_coverage=row.non_zero_net_flow_coverage,
+        score=row.score,
+        grade=row.grade,
+        filter_reason=row.filter_reason,
+        warnings=";".join(sorted(warnings)),
+    )
+
+
+def _parse_warnings(value: str) -> list[str]:
+    if not value:
+        return []
+    return [item for item in value.split(";") if item]
 
 
 def _score_result(
@@ -803,9 +1082,14 @@ def _with_rank(row: WalletFlowSignalResult, rank: int) -> WalletFlowSignalResult
         stability=row.stability,
         baseline_test_average_forward_return=row.baseline_test_average_forward_return,
         test_improvement_over_baseline=row.test_improvement_over_baseline,
+        net_test_improvement_after_cost=row.net_test_improvement_after_cost,
+        unique_flow_hours=row.unique_flow_hours,
+        active_wallet_coverage=row.active_wallet_coverage,
+        non_zero_net_flow_coverage=row.non_zero_net_flow_coverage,
         score=row.score,
         grade=row.grade,
         filter_reason=row.filter_reason,
+        warnings=row.warnings,
     )
 
 
@@ -821,11 +1105,20 @@ def _write_results_csv(path: Path, rows: Sequence[WalletFlowSignalResult]) -> No
 def _render_summary(
     rows: Sequence[WalletFlowSignalResult],
     candidates: Sequence[WalletFlowSignalResult],
+    *,
+    study_details: WalletFlowStudyDetails | None,
 ) -> str:
     counts = {
         grade.value: sum(1 for row in rows if row.grade is grade)
         for grade in WalletFlowCandidateGrade
     }
+    reason_counts: dict[str, int] = defaultdict(int)
+    warning_counts: dict[str, int] = defaultdict(int)
+    for row in rows:
+        reason_counts[row.filter_reason] += 1
+        for warning in _parse_warnings(row.warnings):
+            warning_counts[warning] += 1
+
     lines = [
         "# Wallet Flow Signal Research Summary",
         "",
@@ -841,10 +1134,36 @@ def _render_summary(
         f"- WATCHLIST: {counts[WalletFlowCandidateGrade.WATCHLIST.value]}",
         f"- WEAK: {counts[WalletFlowCandidateGrade.WEAK.value]}",
         f"- REJECTED: {counts[WalletFlowCandidateGrade.REJECTED.value]}",
-        "",
-        "## Top Wallet-Flow Candidates",
-        "",
     ]
+
+    if study_details is not None:
+        lines.extend(
+            [
+                f"- Segment rows before de-dup: {study_details.segment_rows_before_dedup}",
+                f"- Segment rows after de-dup: {study_details.segment_rows_after_dedup}",
+                f"- wallet_flow rows: {study_details.coverage.wallet_flow_rows}",
+                f"- market_flow_hourly rows: {study_details.coverage.market_flow_hourly_rows}",
+                f"- whale_flow_hourly rows: {study_details.coverage.whale_flow_hourly_rows}",
+                f"- copy_flow rows: {study_details.coverage.copy_flow_rows}",
+            ]
+        )
+
+    lines.extend(["", "## Rejection/Downgrade Reasons", ""])
+    if not reason_counts:
+        lines.append("No rejection reasons were recorded.")
+    else:
+        for reason, count in sorted(reason_counts.items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"- {reason}: {count}")
+
+    lines.extend(["", "## Overfit Warnings", ""])
+    if not warning_counts:
+        lines.append("No overfit warnings were triggered.")
+    else:
+        for warning, count in sorted(warning_counts.items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"- {warning}: {count}")
+
+    lines.extend(["", "## Top Wallet-Flow Candidates", ""])
+
     if not candidates:
         lines.extend(
             [
@@ -853,19 +1172,39 @@ def _render_summary(
                 "Practical read: wallet-flow does not yet show robust uplift over baseline.",
             ]
         )
-        return "\n".join(lines) + "\n"
-
-    lines.append(
-        "| Rank | Grade | Asset | Feature | Segment | Horizon | Test Avg | Baseline Test Avg | Improvement | Win Rate |"
-    )
-    lines.append("| ---: | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |")
-    for row in candidates[:10]:
+    else:
         lines.append(
-            f"| {row.rank} | {row.grade.value} | {row.asset} | {row.feature_name} | "
-            f"{_escape_md(row.segment_type + ':' + row.segment_value)} | {row.horizon_hours}h | "
-            f"{row.test_average_forward_return:+.5f} | {row.baseline_test_average_forward_return:+.5f} | "
-            f"{row.test_improvement_over_baseline:+.5f} | {row.test_win_rate:.2f} |"
+            "| Rank | Grade | Asset | Feature | Segment | Horizon | Test Avg | Baseline Test Avg | Improvement | Net After Cost | Win Rate |"
         )
+        lines.append("| ---: | --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |")
+        for row in candidates[:10]:
+            lines.append(
+                f"| {row.rank} | {row.grade.value} | {row.asset} | {row.feature_name} | "
+                f"{_escape_md(row.segment_type + ':' + row.segment_value)} | {row.horizon_hours}h | "
+                f"{row.test_average_forward_return:+.5f} | {row.baseline_test_average_forward_return:+.5f} | "
+                f"{row.test_improvement_over_baseline:+.5f} | {row.net_test_improvement_after_cost:+.5f} | {row.test_win_rate:.2f} |"
+            )
+
+    thin_data = False
+    if study_details is not None:
+        thin_data = (
+            study_details.coverage.market_flow_hourly_rows < 2000
+            or study_details.coverage.wallet_flow_rows < 3000
+            or study_details.coverage.copy_flow_rows < 200
+        )
+    if thin_data:
+        lines.extend(
+            [
+                "",
+                "## Recommended Backfill Plan",
+                "",
+                "Data coverage is still thin for stable wallet-flow inference. Recommended next run (manual, not automatic):",
+                "- `joint-research ingest polymarket-wallet-flow --limit-markets 150 --limit-events 5000`",
+                "- `joint-research ingest polymarket-wallet-flow --asset BTC --limit-markets 100 --limit-events 5000`",
+                "- `joint-research ingest polymarket-wallet-flow --asset ETH --limit-markets 100 --limit-events 5000`",
+            ]
+        )
+
     lines.extend(
         [
             "",
@@ -915,9 +1254,14 @@ def _empty_record() -> dict[str, object]:
         "stability": "",
         "baseline_test_average_forward_return": "",
         "test_improvement_over_baseline": "",
+        "net_test_improvement_after_cost": "",
+        "unique_flow_hours": "",
+        "active_wallet_coverage": "",
+        "non_zero_net_flow_coverage": "",
         "score": "",
         "grade": "",
         "filter_reason": "",
+        "warnings": "",
     }
 
 
@@ -953,3 +1297,13 @@ def _is_finite(value: float) -> bool:
 
 def _escape_md(value: str) -> str:
     return value.replace("|", "\\|")
+
+
+def _safe_count(con: duckdb.DuckDBPyConnection, query: str) -> int:
+    try:
+        value = con.execute(query).fetchone()
+    except duckdb.Error:
+        return 0
+    if not value:
+        return 0
+    return _optional_int(value[0]) or 0

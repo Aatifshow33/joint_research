@@ -6,12 +6,12 @@ This paper simulation uses next-bar entries, capped notional exposure, fixed siz
 
 ## Coverage
 
-- Candidates simulated: 6
-- Trades generated: 484
-- Total paper PnL: $-14.27
+- Candidates simulated: 0
+- Trades generated: 0
+- Total paper PnL: $0.00
 - PAPER_READY: 0
 - WATCHLIST: 0
-- REJECTED: 6
+- REJECTED: 0
 
 ## Top Simulated Candidates
 

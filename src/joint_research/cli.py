@@ -551,20 +551,22 @@ def research_wallet_flow_signal(
 
     from joint_research.research.wallet_flow_signal import (  # noqa: PLC0415
         WalletFlowCandidateGrade,
-        run_wallet_flow_signal_study,
+        run_wallet_flow_signal_study_with_details,
         write_wallet_flow_signal_report,
     )
 
     paths = _resolve_paths(warehouse_root)
-    results = run_wallet_flow_signal_study(
+    study_details = run_wallet_flow_signal_study_with_details(
         paths=paths,
         min_segment_samples=min_segment_samples,
         min_feature_samples=min_feature_samples,
         train_fraction=train_fraction,
     )
+    results = study_details.results
     report_paths = write_wallet_flow_signal_report(
         output_dir=output_dir.resolve(),
         results=results,
+        study_details=study_details,
     )
     counts = {
         grade.value: sum(1 for result in results if result.grade is grade)
