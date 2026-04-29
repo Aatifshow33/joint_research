@@ -8,6 +8,7 @@ from joint_research.ingest.wallet_flow_backfill_plan import (
     STAGE_2_DEPTH,
     STAGE_3_BREADTH,
     MarketCoverageRow,
+    _coverage_diagnostics,
     build_backfill_plan,
     load_market_coverage,
     run_wallet_flow_backfill_plan,
@@ -247,7 +248,38 @@ def test_coverage_calculation(tmp_path: Path) -> None:
     assert by_market["m-btc"].trade_rows == 2
     assert by_market["m-btc"].copy_rows == 1
     assert by_market["m-btc"].market_flow_hourly_rows >= 1
+    assert by_market["m-btc"].observed_flow_hours == by_market["m-btc"].market_flow_hourly_rows
+    assert by_market["m-btc"].coverage_need in {"depth", "continuity_repair", "maintain"}
+    assert by_market["m-btc"].continuity_ratio >= 0.0
     assert by_market["m-sol"].wallet_flow_rows == 0
+    assert by_market["m-sol"].coverage_need == "breadth"
+
+
+def test_coverage_scoring_deterministic() -> None:
+    diag_breadth = _coverage_diagnostics(
+        observed_flow_hours=0,
+        first_flow_hour_ns=None,
+        last_flow_hour_ns=None,
+        latest_flow_hour_ns=100 * HOUR_NS,
+    )
+    diag_continuity = _coverage_diagnostics(
+        observed_flow_hours=30,
+        first_flow_hour_ns=0,
+        last_flow_hour_ns=100 * HOUR_NS,
+        latest_flow_hour_ns=100 * HOUR_NS,
+    )
+    diag_maintain = _coverage_diagnostics(
+        observed_flow_hours=110,
+        first_flow_hour_ns=0,
+        last_flow_hour_ns=120 * HOUR_NS,
+        latest_flow_hour_ns=120 * HOUR_NS,
+    )
+
+    assert diag_breadth["coverage_need"] == "breadth"
+    assert diag_continuity["coverage_need"] == "continuity_repair"
+    assert float(diag_continuity["continuity_ratio"]) < 0.55
+    assert diag_maintain["coverage_need"] == "maintain"
+    assert float(diag_maintain["continuity_ratio"]) > 0.8
 
 
 def test_priority_ranking_prefers_btc_eth_high_volume_undercovered() -> None:
@@ -266,6 +298,7 @@ def test_priority_ranking_prefers_btc_eth_high_volume_undercovered() -> None:
             copy_rows=0,
             market_flow_hourly_rows=0,
             whale_flow_hourly_rows=0,
+            coverage_need="breadth",
         ),
         MarketCoverageRow(
             market_id="btc-covered",
@@ -281,6 +314,14 @@ def test_priority_ranking_prefers_btc_eth_high_volume_undercovered() -> None:
             copy_rows=10,
             market_flow_hourly_rows=80,
             whale_flow_hourly_rows=70,
+            observed_flow_hours=80,
+            first_flow_hour_ns=0,
+            last_flow_hour_ns=300 * HOUR_NS,
+            coverage_span_hours=300,
+            continuity_ratio=80 / 301,
+            missing_hours_estimate=221,
+            recent_coverage=False,
+            coverage_need="recency_repair",
         ),
         MarketCoverageRow(
             market_id="btc-under",
@@ -296,6 +337,7 @@ def test_priority_ranking_prefers_btc_eth_high_volume_undercovered() -> None:
             copy_rows=0,
             market_flow_hourly_rows=0,
             whale_flow_hourly_rows=0,
+            coverage_need="breadth",
         ),
         MarketCoverageRow(
             market_id="sol-under",
@@ -311,13 +353,14 @@ def test_priority_ranking_prefers_btc_eth_high_volume_undercovered() -> None:
             copy_rows=0,
             market_flow_hourly_rows=0,
             whale_flow_hourly_rows=0,
+            coverage_need="breadth",
         ),
     ]
 
     plan = build_backfill_plan(rows, asset="ALL", min_volume=0.0, limit_markets=10)
     quick_ids = [row.market_id for row in plan[STAGE_1_QUICK]]
 
-    assert quick_ids[:3] == ["btc-under", "btc-covered", "eth-under"]
+    assert quick_ids[:3] == ["btc-under", "eth-under", "btc-covered"]
     assert "sol-under" not in quick_ids
 
 
@@ -337,6 +380,7 @@ def test_stage_plan_generation() -> None:
             copy_rows=0,
             market_flow_hourly_rows=0,
             whale_flow_hourly_rows=0,
+            coverage_need="breadth",
         )
         for asset in ("BTC", "ETH", "SOL", "XRP")
     ]
@@ -426,6 +470,7 @@ def test_repeated_run_prefers_undercovered_markets() -> None:
             copy_rows=0,
             market_flow_hourly_rows=0,
             whale_flow_hourly_rows=0,
+            coverage_need="breadth",
         ),
         MarketCoverageRow(
             market_id="m-covered",
@@ -441,11 +486,73 @@ def test_repeated_run_prefers_undercovered_markets() -> None:
             copy_rows=10,
             market_flow_hourly_rows=120,
             whale_flow_hourly_rows=100,
+            observed_flow_hours=120,
+            first_flow_hour_ns=0,
+            last_flow_hour_ns=300 * HOUR_NS,
+            coverage_span_hours=300,
+            continuity_ratio=120 / 301,
+            missing_hours_estimate=181,
+            recent_coverage=False,
+            coverage_need="recency_repair",
         ),
     ]
 
     plan = build_backfill_plan(rows, asset="ALL", min_volume=0.0, limit_markets=10)
     assert plan[STAGE_2_DEPTH][0].market_id == "m-under"
+
+
+def test_ranking_prefers_continuity_gain_over_stale_high_rows() -> None:
+    rows = [
+        MarketCoverageRow(
+            market_id="btc-cont-repair",
+            market_slug="btc-cont-repair",
+            asset="BTC",
+            is_active=True,
+            is_closed=False,
+            is_archived=False,
+            volume_1mo_usd=60_000.0,
+            volume_total_usd=60_000.0,
+            wallet_flow_rows=70,
+            trade_rows=70,
+            copy_rows=0,
+            market_flow_hourly_rows=70,
+            whale_flow_hourly_rows=60,
+            observed_flow_hours=70,
+            first_flow_hour_ns=0,
+            last_flow_hour_ns=200 * HOUR_NS,
+            coverage_span_hours=200,
+            continuity_ratio=70 / 201,
+            missing_hours_estimate=131,
+            recent_coverage=True,
+            coverage_need="continuity_repair",
+        ),
+        MarketCoverageRow(
+            market_id="btc-stale-heavy",
+            market_slug="btc-stale-heavy",
+            asset="BTC",
+            is_active=True,
+            is_closed=False,
+            is_archived=False,
+            volume_1mo_usd=250_000.0,
+            volume_total_usd=250_000.0,
+            wallet_flow_rows=600,
+            trade_rows=590,
+            copy_rows=10,
+            market_flow_hourly_rows=180,
+            whale_flow_hourly_rows=160,
+            observed_flow_hours=180,
+            first_flow_hour_ns=0,
+            last_flow_hour_ns=900 * HOUR_NS,
+            coverage_span_hours=900,
+            continuity_ratio=180 / 901,
+            missing_hours_estimate=721,
+            recent_coverage=False,
+            coverage_need="recency_repair",
+        ),
+    ]
+
+    plan = build_backfill_plan(rows, asset="ALL", min_volume=0.0, limit_markets=10)
+    assert plan[STAGE_1_QUICK][0].market_id == "btc-cont-repair"
 
 
 def test_empty_warehouse_behavior(tmp_path: Path) -> None:
