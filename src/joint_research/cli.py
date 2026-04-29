@@ -137,6 +137,12 @@ def ingest_crypto_derivatives(
             f"ingested=0 symbols={','.join(symbol_list)} errors={len(result.errors)}. "
             "nothing written."
         )
+        for attempt in result.source_attempts:
+            detail_suffix = f" detail={attempt.detail}" if attempt.detail else ""
+            typer.echo(
+                f"  source={attempt.source} symbol={attempt.symbol} type={attempt.record_type} "
+                f"status={attempt.status} rows={attempt.rows}{detail_suffix}"
+            )
         for error in result.errors:
             typer.echo(f"  warning={error}")
         raise typer.Exit(code=0)
@@ -147,6 +153,12 @@ def ingest_crypto_derivatives(
         f"ingested={len(result.rows)} symbols={','.join(symbol_list)} "
         f"errors={len(result.errors)} shard={shard}"
     )
+    for attempt in result.source_attempts:
+        detail_suffix = f" detail={attempt.detail}" if attempt.detail else ""
+        typer.echo(
+            f"  source={attempt.source} symbol={attempt.symbol} type={attempt.record_type} "
+            f"status={attempt.status} rows={attempt.rows}{detail_suffix}"
+        )
     for error in result.errors:
         typer.echo(f"  warning={error}")
 

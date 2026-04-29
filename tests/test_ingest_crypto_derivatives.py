@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import json
+import zipfile
+from io import BytesIO
 
 import duckdb
+import httpx
 import pytest
 from joint_research.ingest.crypto_derivatives import (
+    BINANCE_FUNDING_RATE_URL,
+    BINANCE_MARK_PRICE_URL,
+    BINANCE_PUBLIC_DATA_BASE_URL,
     DERIVATIVES_VENUE,
+    DerivativesSourceAttempt,
     classify_derivatives_regime,
+    fetch_derivatives_rows,
     project_binance_funding_rate,
     project_binance_mark_price_basis,
 )
@@ -153,3 +161,115 @@ def test_derivatives_views_register_regime(tmp_path) -> None:
     assert funding_rows == [("BTCUSDT", pytest.approx(0.0002))]
     assert basis_rows == [("BTCUSDT", pytest.approx(0.01))]
     assert regime == [("positive_funding", "high_funding", "perp_premium")]
+
+
+def _zip_csv(filename: str, content: str) -> bytes:
+    bio = BytesIO()
+    with zipfile.ZipFile(bio, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(filename, content)
+    return bio.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_fallback_activates_after_451_and_preserves_source_metadata() -> None:
+    funding_csv = "\n".join(
+        [
+            "calc_time,funding_interval_hours,last_funding_rate",
+            "1700000000000,8,0.00010",
+            "1700003600000,8,0.00020",
+        ]
+    )
+    mark_csv = "\n".join(
+        [
+            "open_time,open,high,low,close,volume,close_time,quote_volume,count,taker_buy_volume,taker_buy_quote_volume,ignore",
+            "1700000000000,30000,30100,29900,30050,0,1700003599999,0,0,0,0,0",
+        ]
+    )
+    spot_csv = "\n".join(
+        [
+            "1700000000000000,29900,30100,29800,30000,1,1700003599999999,1000,1,0.5,500,0",
+        ]
+    )
+    funding_zip = _zip_csv("BTCUSDT-fundingRate-2026-03.csv", funding_csv)
+    mark_zip = _zip_csv("BTCUSDT-1h-2026-04-27.csv", mark_csv)
+    spot_zip = _zip_csv("BTCUSDT-1h-2026-04-27.csv", spot_csv)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        full_url = str(request.url)
+        if full_url.startswith(BINANCE_FUNDING_RATE_URL):
+            return httpx.Response(451, text="geo blocked")
+        if full_url.startswith(BINANCE_MARK_PRICE_URL):
+            return httpx.Response(451, text="geo blocked")
+        if path.startswith("/data/futures/um/monthly/fundingRate/"):
+            return httpx.Response(200, content=funding_zip)
+        if path.startswith("/data/futures/um/daily/markPriceKlines/"):
+            return httpx.Response(200, content=mark_zip)
+        if path.startswith("/data/spot/daily/klines/"):
+            return httpx.Response(200, content=spot_zip)
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        result = await fetch_derivatives_rows(symbols=("BTCUSDT",), limit=2, client=client)
+
+    assert len(result.rows) == 3
+    assert any(
+        row.to_warehouse_row()["source"].startswith(
+            f"{DERIVATIVES_VENUE}.derivatives.binance_public_data."
+        )
+        for row in result.rows
+    )
+    assert any(
+        attempt.source == "binance_api"
+        and attempt.record_type == "funding_rate"
+        and attempt.status == "failed"
+        for attempt in result.source_attempts
+    )
+    assert any(
+        attempt.source == "binance_public_data"
+        and attempt.record_type == "funding_rate"
+        and attempt.status == "success"
+        and attempt.rows == 2
+        for attempt in result.source_attempts
+    )
+
+
+@pytest.mark.asyncio
+async def test_partial_success_writes_available_rows() -> None:
+    funding_csv = "\n".join(
+        [
+            "calc_time,funding_interval_hours,last_funding_rate",
+            "1700000000000,8,0.00010",
+        ]
+    )
+    funding_zip = _zip_csv("BTCUSDT-fundingRate-2026-03.csv", funding_csv)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        full_url = str(request.url)
+        if full_url.startswith(BINANCE_FUNDING_RATE_URL):
+            return httpx.Response(451, text="geo blocked")
+        if full_url.startswith(BINANCE_MARK_PRICE_URL):
+            return httpx.Response(451, text="geo blocked")
+        if path.startswith("/data/futures/um/monthly/fundingRate/"):
+            return httpx.Response(200, content=funding_zip)
+        if path.startswith("/data/futures/um/daily/markPriceKlines/"):
+            return httpx.Response(404)
+        if path.startswith("/data/spot/daily/klines/"):
+            return httpx.Response(404)
+        if str(request.url).startswith(BINANCE_PUBLIC_DATA_BASE_URL):
+            return httpx.Response(404)
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        result = await fetch_derivatives_rows(symbols=("BTCUSDT",), limit=1, client=client)
+
+    assert len(result.rows) == 1
+    assert result.rows[0].record_type == "funding_rate"
+    assert any(
+        attempt.record_type == "perp_basis" and attempt.status == "failed"
+        for attempt in result.source_attempts
+    )
+    assert any("perp_basis" in error for error in result.errors)
