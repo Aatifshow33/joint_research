@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import duckdb
@@ -84,10 +85,19 @@ class WalletFlowRow:
 
 
 @dataclass(frozen=True)
+class WalletFlowFetchRequest:
+    market_refs: tuple[WalletFlowMarketRef, ...]
+    limit_events: int
+    include_copy_signals: bool
+    lookback_hours: int | None
+
+
+@dataclass(frozen=True)
 class WalletFlowFetchPayload:
     source_clients: tuple[str, ...]
     wallet_activities: tuple[dict[str, Any], ...]
     relationship_reports: tuple[dict[str, Any], ...]
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -95,6 +105,9 @@ class WalletFlowIngestResult:
     rows_written: int
     trade_rows: int
     copy_rows: int
+    markets_scanned: int
+    markets_with_rows: int
+    skipped_markets: int
     source_clients: tuple[str, ...]
     warnings: tuple[str, ...]
     shard_path: str
@@ -119,11 +132,20 @@ async def ingest_polymarket_wallet_flow(
     paths: WarehousePaths,
     limit_markets: int = 20,
     limit_events: int = 500,
+    min_volume: float = 0.0,
+    asset: str | None = None,
+    lookback_hours: int | None = None,
     large_trade_usdc: float = 1_000.0,
     include_copy_signals: bool = True,
-    fetch_payload: Callable[[int, bool], Awaitable[WalletFlowFetchPayload]] | None = None,
+    fetch_payload: Callable[[WalletFlowFetchRequest], Awaitable[WalletFlowFetchPayload]] | None = None,
 ) -> WalletFlowIngestResult:
-    market_refs = load_crypto_market_refs(paths=paths, limit_markets=limit_markets)
+    market_refs = load_crypto_market_refs(
+        paths=paths,
+        limit_markets=limit_markets,
+        min_volume=min_volume,
+        asset=asset,
+    )
+    markets_scanned = len(market_refs)
     by_condition: dict[str, WalletFlowMarketRef] = {
         ref.condition_id: ref for ref in market_refs if ref.condition_id
     }
@@ -132,10 +154,16 @@ async def ingest_polymarket_wallet_flow(
     }
 
     warnings: list[str] = []
-    payload: WalletFlowFetchPayload | None = None
+    payload: WalletFlowFetchPayload
     fetcher = fetch_payload or _fetch_wallet_flow_payload_from_polymarket_arb
+    request = WalletFlowFetchRequest(
+        market_refs=tuple(market_refs),
+        limit_events=limit_events,
+        include_copy_signals=include_copy_signals,
+        lookback_hours=lookback_hours,
+    )
     try:
-        payload = await fetcher(limit_events, include_copy_signals)
+        payload = await fetcher(request)
     except Exception as exc:  # noqa: BLE001 - graceful empty behavior by contract
         warnings.append(f"wallet_flow_fetch_failed:{type(exc).__name__}:{exc}")
         payload = WalletFlowFetchPayload(
@@ -143,6 +171,8 @@ async def ingest_polymarket_wallet_flow(
             wallet_activities=(),
             relationship_reports=(),
         )
+
+    warnings.extend(payload.warnings)
 
     rows: list[WalletFlowRow] = []
     for record in payload.wallet_activities:
@@ -165,8 +195,16 @@ async def ingest_polymarket_wallet_flow(
                 )
             )
 
+    if lookback_hours is not None and lookback_hours > 0:
+        cutoff_ns = int((datetime.now(tz=UTC) - timedelta(hours=lookback_hours)).timestamp() * 1_000_000_000)
+        rows = [row for row in rows if row.event_time_ns >= cutoff_ns]
+
     rows.sort(key=lambda row: row.event_time_ns, reverse=True)
+    rows = _dedupe_rows_by_hash(rows)
     rows = rows[: max(limit_events, 0)]
+
+    markets_with_rows = len({row.market_id for row in rows if row.market_id})
+    skipped_markets = max(0, markets_scanned - markets_with_rows)
 
     if not rows:
         warnings.append("wallet_flow_no_rows_after_projection")
@@ -174,6 +212,9 @@ async def ingest_polymarket_wallet_flow(
             rows_written=0,
             trade_rows=0,
             copy_rows=0,
+            markets_scanned=markets_scanned,
+            markets_with_rows=0,
+            skipped_markets=skipped_markets,
             source_clients=payload.source_clients,
             warnings=tuple(warnings),
             shard_path="",
@@ -187,15 +228,25 @@ async def ingest_polymarket_wallet_flow(
         rows_written=len(rows),
         trade_rows=trade_rows,
         copy_rows=copy_rows,
+        markets_scanned=markets_scanned,
+        markets_with_rows=markets_with_rows,
+        skipped_markets=skipped_markets,
         source_clients=payload.source_clients,
         warnings=tuple(warnings),
         shard_path=str(shard),
     )
 
 
-def load_crypto_market_refs(*, paths: WarehousePaths, limit_markets: int) -> list[WalletFlowMarketRef]:
+def load_crypto_market_refs(
+    *,
+    paths: WarehousePaths,
+    limit_markets: int,
+    min_volume: float = 0.0,
+    asset: str | None = None,
+) -> list[WalletFlowMarketRef]:
     con = duckdb.connect()
     register_views(con, paths)
+    asset_filter = asset.upper().strip() if asset is not None and asset.strip() else None
     rows = con.execute(
         """
         WITH latest AS (
@@ -205,9 +256,13 @@ def load_crypto_market_refs(*, paths: WarehousePaths, limit_markets: int) -> lis
               market_id,
               condition_id,
               yes_token_id AS token_id,
-              crypto_asset_tag AS asset,
+              upper(crypto_asset_tag) AS asset,
               slug AS market_slug,
+              active,
+              closed,
+              archived,
               volume_1mo_usd,
+              volume_total_usd,
               event_time_ns,
               ROW_NUMBER() OVER (
                 PARTITION BY market_id
@@ -219,12 +274,19 @@ def load_crypto_market_refs(*, paths: WarehousePaths, limit_markets: int) -> lis
           )
           WHERE rn = 1
         )
-        SELECT market_id, condition_id, token_id, upper(asset), market_slug
+        SELECT market_id, condition_id, token_id, asset, market_slug
         FROM latest
-        ORDER BY coalesce(volume_1mo_usd, 0) DESC, market_id
+        WHERE coalesce(volume_1mo_usd, volume_total_usd, 0) >= ?
+          AND (? IS NULL OR asset = ?)
+        ORDER BY
+          CASE WHEN coalesce(active, false) AND NOT coalesce(closed, false) AND NOT coalesce(archived, false)
+               THEN 1 ELSE 0 END DESC,
+          coalesce(volume_1mo_usd, 0) DESC,
+          coalesce(volume_total_usd, 0) DESC,
+          market_id
         LIMIT ?
         """,
-        [max(limit_markets, 0)],
+        [max(min_volume, 0.0), asset_filter, asset_filter, max(limit_markets, 0)],
     ).fetchall()
     return [
         WalletFlowMarketRef(
@@ -423,7 +485,7 @@ def aggregate_market_flow_hourly(rows: Iterable[WalletFlowRow]) -> list[WalletFl
         large_trade_count = int(bucket["large_trade_count"])
         whale_score = 0.0
         if total_volume > 0:
-            whale_score = (net_flow / total_volume) * math_log1p(large_trade_count)
+            whale_score = (net_flow / total_volume) * math.log1p(max(large_trade_count, 0))
         aggregates.append(
             WalletFlowHourlyAggregate(
                 market_id=market_id,
@@ -450,9 +512,9 @@ def aggregate_market_flow_hourly(rows: Iterable[WalletFlowRow]) -> list[WalletFl
 
 
 async def _fetch_wallet_flow_payload_from_polymarket_arb(
-    limit_events: int,
-    include_copy_signals: bool,
+    request: WalletFlowFetchRequest,
 ) -> WalletFlowFetchPayload:
+    from polymarket_arb.clients.data_api import DataApiClient  # noqa: PLC0415
     from polymarket_arb.config import Settings  # noqa: PLC0415
     from polymarket_arb.relationships.engine import RelationshipEngine  # noqa: PLC0415
     from polymarket_arb.services.wallet_backfill_service import (  # noqa: PLC0415
@@ -460,24 +522,93 @@ async def _fetch_wallet_flow_payload_from_polymarket_arb(
     )
 
     settings = Settings()
-    service = WalletBackfillService(settings=settings)
-    wallet_limit = max(5, min(limit_events, 50))
-    _selected, _seeds, activities = await service.collect_wallet_backfill(limit=wallet_limit)
-    activity_payloads = tuple(activity.model_dump(mode="json") for activity in activities)
+    data_api = DataApiClient(settings)
+    wallet_service = WalletBackfillService(settings=settings)
+    warnings: list[str] = []
 
-    relationship_reports: tuple[dict[str, Any], ...] = ()
-    if include_copy_signals:
-        reports = RelationshipEngine().build_relationship_reports(activities=activities)
-        relationship_reports = tuple(report.to_output() for report in reports)
+    try:
+        condition_ids = [
+            ref.condition_id for ref in request.market_refs if ref.condition_id is not None
+        ]
+        holder_wallets: set[str] = set()
+        if condition_ids:
+            holder_limit_per_market = max(
+                3,
+                min(10, request.limit_events // max(len(condition_ids), 1) + 1),
+            )
+            for chunk in _chunks(condition_ids, size=20):
+                try:
+                    groups = await data_api.get_holders(
+                        condition_ids=list(chunk),
+                        limit=holder_limit_per_market,
+                    )
+                except Exception as exc:  # noqa: BLE001 - graceful partial fetch
+                    warnings.append(f"holders_fetch_failed:{type(exc).__name__}:{exc}")
+                    continue
+                for group in groups:
+                    holders = group.payload.get("holders") if isinstance(group.payload, dict) else None
+                    if not isinstance(holders, list):
+                        continue
+                    for holder in holders:
+                        if not isinstance(holder, dict):
+                            continue
+                        wallet = _normalize_wallet(holder.get("proxyWallet"))
+                        if wallet:
+                            holder_wallets.add(wallet)
 
-    return WalletFlowFetchPayload(
-        source_clients=(
-            "polymarket_arb.services.WalletBackfillService",
-            "polymarket_arb.relationships.RelationshipEngine",
-        ),
-        wallet_activities=activity_payloads,
-        relationship_reports=relationship_reports,
-    )
+        leaderboard_wallets: set[str] = set()
+        leaderboard_limit = max(50, min(400, request.limit_events))
+        try:
+            leaderboard_entries = await data_api.get_leaderboard(limit=leaderboard_limit)
+            for entry in leaderboard_entries:
+                wallet = _normalize_wallet(entry.payload.get("proxyWallet"))
+                if wallet:
+                    leaderboard_wallets.add(wallet)
+        except Exception as exc:  # noqa: BLE001 - graceful partial fetch
+            warnings.append(f"leaderboard_fetch_failed:{type(exc).__name__}:{exc}")
+
+        selected_wallets = sorted(holder_wallets | leaderboard_wallets)
+        max_wallets = max(30, min(200, max(request.limit_events // 2, 50)))
+        selected_wallets = selected_wallets[:max_wallets]
+
+        if not selected_wallets:
+            warnings.append("wallet_discovery_empty")
+            return WalletFlowFetchPayload(
+                source_clients=(
+                    "polymarket_arb.clients.DataApiClient",
+                    "polymarket_arb.services.WalletBackfillService",
+                    "polymarket_arb.relationships.RelationshipEngine",
+                ),
+                wallet_activities=(),
+                relationship_reports=(),
+                warnings=tuple(warnings),
+            )
+
+        activity_limit = max(20, min(150, max(request.limit_events // 5, 40)))
+        activities = await wallet_service.fetch_wallet_activity(
+            wallet_addresses=selected_wallets,
+            limit=activity_limit,
+            data_api_client=data_api,
+        )
+
+        relationship_reports: tuple[dict[str, Any], ...] = ()
+        if request.include_copy_signals:
+            reports = RelationshipEngine().build_relationship_reports(activities=activities)
+            relationship_reports = tuple(report.to_output() for report in reports)
+
+        activity_payloads = tuple(activity.model_dump(mode="json") for activity in activities)
+        return WalletFlowFetchPayload(
+            source_clients=(
+                "polymarket_arb.clients.DataApiClient",
+                "polymarket_arb.services.WalletBackfillService",
+                "polymarket_arb.relationships.RelationshipEngine",
+            ),
+            wallet_activities=activity_payloads,
+            relationship_reports=relationship_reports,
+            warnings=tuple(warnings),
+        )
+    finally:
+        await data_api.aclose()
 
 
 def _find_market_ref(
@@ -558,10 +689,22 @@ def _payload_hash(*, record_type: str, source_record_id: str, payload_json: str)
     ).hexdigest()
 
 
-def math_log1p(value: int) -> float:
-    import math  # noqa: PLC0415
+def _dedupe_rows_by_hash(rows: Sequence[WalletFlowRow]) -> list[WalletFlowRow]:
+    seen: set[str] = set()
+    out: list[WalletFlowRow] = []
+    for row in rows:
+        if row.payload_hash in seen:
+            continue
+        seen.add(row.payload_hash)
+        out.append(row)
+    return out
 
-    return math.log1p(max(value, 0))
+
+def _chunks(values: Sequence[str], *, size: int) -> Iterable[Sequence[str]]:
+    if size <= 0:
+        raise ValueError("chunk_size_must_be_positive")
+    for idx in range(0, len(values), size):
+        yield values[idx : idx + size]
 
 
 TABLE = POLYMARKET_WALLET_FLOW

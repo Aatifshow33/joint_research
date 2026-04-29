@@ -638,6 +638,18 @@ def ingest_wallet_activity(
 def ingest_polymarket_wallet_flow(
     limit_markets: int = typer.Option(20, help="Top-N crypto-tagged markets to scope ingestion."),
     limit_events: int = typer.Option(500, help="Maximum rows to write for this run."),
+    min_volume: float = typer.Option(
+        0.0,
+        help="Minimum market volume (1mo, fallback total) required for market selection.",
+    ),
+    asset: str | None = typer.Option(
+        None,
+        help="Optional asset filter (e.g. BTC, ETH, SOL, XRP).",
+    ),
+    lookback_hours: int | None = typer.Option(
+        None,
+        help="Optional lookback window; keep only rows newer than N hours.",
+    ),
     large_trade_usdc: float = typer.Option(
         1_000.0,
         help="USDC notional threshold used to tag large trades.",
@@ -661,11 +673,17 @@ def ingest_polymarket_wallet_flow(
             paths=paths,
             limit_markets=limit_markets,
             limit_events=limit_events,
+            min_volume=min_volume,
+            asset=asset,
+            lookback_hours=lookback_hours,
             large_trade_usdc=large_trade_usdc,
             include_copy_signals=include_copy_signals,
         )
     )
     typer.echo(
+        f"markets_scanned={result.markets_scanned} "
+        f"markets_with_rows={result.markets_with_rows} "
+        f"skipped_markets={result.skipped_markets} "
         f"rows_written={result.rows_written} "
         f"trade_rows={result.trade_rows} "
         f"copy_rows={result.copy_rows} "
