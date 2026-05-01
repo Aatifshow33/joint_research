@@ -9,7 +9,13 @@ from pathlib import Path
 
 import typer
 
+from joint_research.research.wallet_flow_backfill_priority import (
+    WalletFlowBackfillPriorityThresholds,
+    write_wallet_flow_backfill_priority_artifacts,
+)
 from joint_research.warehouse import WarehousePaths
+
+_DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 ingest_app = typer.Typer(no_args_is_help=True, help="Ingest data into the warehouse.")
@@ -598,6 +604,62 @@ def research_wallet_flow_coverage_gate(
     typer.echo(f"coverage_report={report_path}")
     if gate.failure_reasons:
         typer.echo("failure_reasons=" + ";".join(gate.failure_reasons))
+
+
+@research_app.command("wallet-flow-backfill-priority")
+def research_wallet_flow_backfill_priority(
+    coverage_csv: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_coverage.csv"),
+        "--coverage-csv",
+        help="Wallet-flow coverage CSV produced by the backfill planner.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help="Directory for wallet_flow_backfill_priority.md and wallet_flow_backfill_priority.csv.",
+    ),
+    min_wallet_flow_rows: int = typer.Option(
+        _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS.min_wallet_flow_rows,
+        "--min-wallet-flow-rows",
+        help="Minimum wallet-flow rows required per market before it is deprioritized.",
+    ),
+    min_market_flow_hourly_rows: int = typer.Option(
+        _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS.min_market_flow_hourly_rows,
+        "--min-market-flow-hourly-rows",
+        help="Minimum market-flow hourly rows required per market before it is deprioritized.",
+    ),
+    min_whale_flow_hourly_rows: int = typer.Option(
+        _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS.min_whale_flow_hourly_rows,
+        "--min-whale-flow-hourly-rows",
+        help="Minimum whale-flow hourly rows required per market before it is deprioritized.",
+    ),
+    show_top: int = typer.Option(25, "--show-top", help="Top-N priorities to render."),
+) -> None:
+    """Rank wallet-flow data backfill priorities (non-tradeable)."""
+
+    thresholds = WalletFlowBackfillPriorityThresholds(
+        min_wallet_flow_rows=min_wallet_flow_rows,
+        min_market_flow_hourly_rows=min_market_flow_hourly_rows,
+        min_whale_flow_hourly_rows=min_whale_flow_hourly_rows,
+    )
+    report_path, csv_path, plan = write_wallet_flow_backfill_priority_artifacts(
+        coverage_csv=coverage_csv.resolve(),
+        output_dir=output_dir.resolve(),
+        thresholds=thresholds,
+        top_limit=show_top,
+    )
+
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"backfill_markets={plan.backfill_markets}")
+    typer.echo(f"active_backfill_markets={plan.active_backfill_markets}")
+    typer.echo(f"total_markets={plan.total_markets}")
+    typer.echo(f"priorities_rendered={len(plan.priorities)}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo(f"priority_report={report_path}")
+    typer.echo(f"priority_csv={csv_path}")
 
 
 @research_app.command("wallet-flow-signal")
