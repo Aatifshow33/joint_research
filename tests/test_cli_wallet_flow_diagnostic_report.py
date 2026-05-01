@@ -15,6 +15,7 @@ def test_wallet_flow_signal_help_includes_diagnostic_report_flag() -> None:
 
     assert result.exit_code == 0
     assert "--diagnostic-report" in result.output
+    assert "--promotion-plan" in result.output
 
 
 def test_wallet_flow_signal_diagnostic_report_writes_triage(
@@ -46,6 +47,13 @@ def test_wallet_flow_signal_diagnostic_report_writes_triage(
         report_path.write_text("EXPLORATORY ONLY - NOT TRADEABLE\n")
         return report_path
 
+    def fake_write_wallet_flow_promotion_plan_report(*, output_dir, diagnostics):
+        calls["promotion_output_dir"] = output_dir
+        calls["promotion_diagnostics"] = diagnostics
+        report_path = output_dir / "wallet_flow_promotion_plan.md"
+        report_path.write_text("EXPLORATORY ONLY - NOT TRADEABLE\n")
+        return report_path
+
     monkeypatch.setattr(
         signal_module,
         "run_wallet_flow_signal_study_with_details",
@@ -66,6 +74,12 @@ def test_wallet_flow_signal_diagnostic_report_writes_triage(
         "write_wallet_flow_diagnostic_triage_report",
         fake_write_wallet_flow_diagnostic_triage_report,
     )
+    from joint_research.research import wallet_flow_promotion_plan as promotion_module
+    monkeypatch.setattr(
+        promotion_module,
+        "write_wallet_flow_promotion_plan_report",
+        fake_write_wallet_flow_promotion_plan_report,
+    )
 
     runner = CliRunner()
     result = runner.invoke(
@@ -76,6 +90,7 @@ def test_wallet_flow_signal_diagnostic_report_writes_triage(
             "--output-dir",
             str(tmp_path),
             "--diagnostic-report",
+            "--promotion-plan",
         ],
     )
 
@@ -84,3 +99,6 @@ def test_wallet_flow_signal_diagnostic_report_writes_triage(
     assert calls["diagnostics"] == ["diagnostic"]
     assert (tmp_path / "wallet_flow_diagnostic_triage.md").exists()
     assert calls["triage_output_dir"] == tmp_path.resolve()
+    assert calls["promotion_diagnostics"] == ["diagnostic"]
+    assert calls["promotion_output_dir"] == tmp_path.resolve()
+    assert (tmp_path / "wallet_flow_promotion_plan.md").exists()

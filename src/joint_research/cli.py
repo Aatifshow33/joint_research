@@ -272,6 +272,8 @@ def research_lead_lag(
     typer.echo(f"candidates_json={report_paths.candidates_json}")
     if diagnostic_triage_md is not None:
         typer.echo(f"diagnostic_triage={diagnostic_triage_md}")
+    if promotion_plan_md is not None:
+        typer.echo(f"promotion_plan={promotion_plan_md}")
 
     if not token_results:
         typer.echo("no tokens met the min_observations threshold. backfill more data.")
@@ -552,6 +554,11 @@ def research_wallet_flow_signal(
         "--diagnostic-report/--no-diagnostic-report",
         help="Also write wallet_flow_diagnostic_triage.md from rejection diagnostics.",
     ),
+    promotion_plan: bool = typer.Option(
+        False,
+        "--promotion-plan/--no-promotion-plan",
+        help="Also write wallet_flow_promotion_plan.md as a non-tradeable data/action plan.",
+    ),
     warehouse_root: Path = typer.Option(None),
 ) -> None:
     """Run wallet-flow-conditioned Polymarket -> crypto signal analysis."""
@@ -564,6 +571,9 @@ def research_wallet_flow_signal(
     )
     from joint_research.research.wallet_flow_diagnostic_triage import (  # noqa: PLC0415
         write_wallet_flow_diagnostic_triage_report,
+    )
+    from joint_research.research.wallet_flow_promotion_plan import (  # noqa: PLC0415
+        write_wallet_flow_promotion_plan_report,
     )
 
     paths = _resolve_paths(warehouse_root)
@@ -581,12 +591,20 @@ def research_wallet_flow_signal(
         study_details=study_details,
     )
     diagnostic_triage_md = None
-    if diagnostic_report:
+    promotion_plan_md = None
+    diagnostics = None
+    if diagnostic_report or promotion_plan:
         diagnostics = build_wallet_flow_rejection_diagnostics(
             raw_results=study_details.raw_results,
             final_results=results,
         )
+    if diagnostic_report and diagnostics is not None:
         diagnostic_triage_md = write_wallet_flow_diagnostic_triage_report(
+            output_dir=resolved_output_dir,
+            diagnostics=diagnostics,
+        )
+    if promotion_plan and diagnostics is not None:
+        promotion_plan_md = write_wallet_flow_promotion_plan_report(
             output_dir=resolved_output_dir,
             diagnostics=diagnostics,
         )
