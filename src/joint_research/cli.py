@@ -23,6 +23,9 @@ from joint_research.research.wallet_flow_backfill_manifest import (
 from joint_research.research.wallet_flow_manifest_review_gate import (
     run_wallet_flow_manifest_review_gate,
 )
+from joint_research.research.wallet_flow_approved_manifest_packet import (
+    write_wallet_flow_approved_manifest_packet,
+)
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
@@ -877,6 +880,50 @@ def research_wallet_flow_manifest_review_gate(
     typer.echo("No live trading changes.")
     typer.echo("No ingestion executed.")
     typer.echo(f"review_gate_report={result.report_path}")
+
+
+@research_app.command("wallet-flow-approved-manifest-packet")
+def research_wallet_flow_approved_manifest_packet(
+    manifest_json: Path = typer.Option(
+        Path(
+            "artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_backfill_execution_manifest.json"
+        ),
+        "--manifest-json",
+        help="Execution manifest JSON produced by wallet-flow-backfill-manifest.",
+    ),
+    review_gate_report: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_manifest_review_gate.md"),
+        "--review-gate-report",
+        help="Review gate markdown report path for packet provenance.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_approved_manifest_packet.md and "
+            "wallet_flow_approved_manifest_packet.json."
+        ),
+    ),
+) -> None:
+    """Export deterministic approved manifest packet for human review (no execution)."""
+
+    artifacts = write_wallet_flow_approved_manifest_packet(
+        manifest_json=manifest_json.resolve(),
+        review_gate_report=review_gate_report.resolve(),
+        output_dir=output_dir.resolve(),
+    )
+    packet = artifacts.packet
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"export_status={packet.export_status}")
+    typer.echo(f"manifest_rows={packet.manifest_rows}")
+    typer.echo(f"gate_status={packet.gate_status}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo("No ingestion executed.")
+    typer.echo(f"approved_manifest_packet={artifacts.packet_md}")
+    typer.echo(f"approved_manifest_packet_json={artifacts.packet_json}")
 
 
 @research_app.command("wallet-flow-signal")
