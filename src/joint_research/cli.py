@@ -16,6 +16,9 @@ from joint_research.research.wallet_flow_backfill_priority import (
 from joint_research.research.wallet_flow_backfill_batches import (
     write_wallet_flow_backfill_batches_artifacts,
 )
+from joint_research.research.wallet_flow_backfill_manifest import (
+    write_wallet_flow_backfill_manifest_artifacts,
+)
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
@@ -727,6 +730,82 @@ def research_wallet_flow_backfill_batches(
     typer.echo("No live trading changes.")
     typer.echo(f"batch_report={report_path}")
     typer.echo(f"batch_csv={csv_path}")
+
+
+@research_app.command("wallet-flow-backfill-manifest")
+def research_wallet_flow_backfill_manifest(
+    coverage_csv: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_coverage.csv"),
+        "--coverage-csv",
+        help="Wallet-flow coverage CSV produced by the backfill planner.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_backfill_execution_manifest.md, "
+            "wallet_flow_backfill_execution_manifest.csv, and "
+            "wallet_flow_backfill_execution_manifest.json."
+        ),
+    ),
+    min_wallet_flow_rows: int = typer.Option(
+        _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS.min_wallet_flow_rows,
+        "--min-wallet-flow-rows",
+        help="Minimum wallet-flow rows required per market before it is deprioritized.",
+    ),
+    min_market_flow_hourly_rows: int = typer.Option(
+        _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS.min_market_flow_hourly_rows,
+        "--min-market-flow-hourly-rows",
+        help="Minimum market-flow hourly rows required per market before it is deprioritized.",
+    ),
+    min_whale_flow_hourly_rows: int = typer.Option(
+        _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS.min_whale_flow_hourly_rows,
+        "--min-whale-flow-hourly-rows",
+        help="Minimum whale-flow hourly rows required per market before it is deprioritized.",
+    ),
+    batch_size: int = typer.Option(25, "--batch-size", help="Markets per backfill batch."),
+    max_batches: int = typer.Option(5, "--max-batches", help="Maximum number of batches to plan."),
+    dry_run: bool = typer.Option(
+        True,
+        "--dry-run/--no-dry-run",
+        help="Planning-only mode; this command never executes ingestion.",
+    ),
+    command_template: str | None = typer.Option(
+        None,
+        "--command-template",
+        help="Optional format string using {market_id}, {market_slug}, {asset}, {batch_id}, {rank}.",
+    ),
+) -> None:
+    """Generate a deterministic wallet-flow backfill execution manifest (review-only)."""
+
+    thresholds = WalletFlowBackfillPriorityThresholds(
+        min_wallet_flow_rows=min_wallet_flow_rows,
+        min_market_flow_hourly_rows=min_market_flow_hourly_rows,
+        min_whale_flow_hourly_rows=min_whale_flow_hourly_rows,
+    )
+    report_path, csv_path, json_path, plan = write_wallet_flow_backfill_manifest_artifacts(
+        coverage_csv=coverage_csv.resolve(),
+        output_dir=output_dir.resolve(),
+        thresholds=thresholds,
+        batch_size=batch_size,
+        max_batches=max_batches,
+        dry_run=dry_run,
+        command_template=command_template,
+    )
+
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"dry_run={dry_run}")
+    typer.echo(f"manifest_rows={len(plan.rows)}")
+    typer.echo(f"batches={plan.batches}")
+    typer.echo(f"batch_size={batch_size}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo("No ingestion executed.")
+    typer.echo(f"manifest_report={report_path}")
+    typer.echo(f"manifest_csv={csv_path}")
+    typer.echo(f"manifest_json={json_path}")
 
 
 @research_app.command("wallet-flow-signal")
