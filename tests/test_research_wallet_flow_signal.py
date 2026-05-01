@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 
 import duckdb
 
@@ -8,11 +9,15 @@ from joint_research.research.wallet_flow_signal import (
     WalletFlowCandidateGrade,
     WalletFlowCoverage,
     WalletFlowObservation,
+    WalletFlowRejectionDiagnostic,
     WalletFlowSignalResult,
     WalletFlowStudyDetails,
     analyze_wallet_flow_segments,
     analyze_wallet_flow_segments_with_details,
+    build_wallet_flow_rejection_diagnostics,
+    grade_wallet_flow_candidate,
     load_wallet_flow_observations,
+    rank_wallet_flow_near_misses,
     rank_wallet_flow_results,
     write_wallet_flow_signal_report,
 )
@@ -327,6 +332,7 @@ def test_ranking_is_deterministic() -> None:
 def test_artifact_writing_includes_coverage_and_dedup_details(tmp_path) -> None:
     study_details = WalletFlowStudyDetails(
         results=[_result("btc-market", improvement=0.006)],
+        raw_results=[_result("btc-market", improvement=0.006)],
         segment_rows_before_dedup=42,
         segment_rows_after_dedup=10,
         coverage=WalletFlowCoverage(
@@ -346,14 +352,151 @@ def test_artifact_writing_includes_coverage_and_dedup_details(tmp_path) -> None:
     assert paths.summary_md.name == "wallet_flow_signal_summary.md"
     assert paths.results_csv.name == "wallet_flow_signal_results.csv"
     assert paths.candidates_json.name == "wallet_flow_signal_candidates.json"
+    assert paths.rejection_diagnostics_csv.name == "wallet_flow_rejection_diagnostics.csv"
+    assert paths.rejection_summary_md.name == "wallet_flow_rejection_summary.md"
     assert "EXPLORATORY ONLY - NOT TRADEABLE" in summary
     assert "Segment rows before de-dup: 42" in summary
     assert "wallet_flow rows: 1001" in summary
     assert "Recommended Backfill Plan" in summary
     assert "asset,market_id,market_slug" in paths.results_csv.read_text()
+    rejection_summary = paths.rejection_summary_md.read_text()
+    assert "Wallet Flow Rejection Diagnostics" in rejection_summary
+    assert "final_watchlist=1" in rejection_summary
+    assert "Not tradeable." in rejection_summary
 
     candidates = json.loads(paths.candidates_json.read_text())
     assert candidates[0]["grade"] == "WATCHLIST"
+
+
+def test_rejection_reason_generation_is_deterministic() -> None:
+    rows = [
+        _obs(
+            i,
+            net_flow=2.0 if i % 2 == 0 else -2.0,
+            forward_return=0.01 if i < 24 else -0.01,
+            flow_time_ns=HOUR_NS,
+            unique_wallets=0,
+            copy_count=1 if i in (0, 4, 9) else 0,
+        )
+        for i in range(60)
+    ]
+    details = analyze_wallet_flow_segments_with_details(
+        rows,
+        min_segment_samples=24,
+        min_feature_samples=36,
+        train_fraction=0.6,
+    )
+    first = build_wallet_flow_rejection_diagnostics(
+        raw_results=details.raw_results,
+        final_results=details.results,
+    )
+    second = build_wallet_flow_rejection_diagnostics(
+        raw_results=details.raw_results,
+        final_results=details.results,
+    )
+    assert first == second
+    assert any("insufficient_unique_flow_hours" in row.rejection_reasons for row in first)
+    assert any("insufficient_active_wallet_coverage" in row.rejection_reasons for row in first)
+    assert any("copy_flow_too_thin" in row.rejection_reasons for row in first)
+
+
+def test_rejection_reason_counts_and_duplicate_competition() -> None:
+    rows = [
+        _obs(
+            i,
+            net_flow=2.5 if i % 2 == 0 else -2.2,
+            forward_return=0.02 if i < 70 else -0.006,
+            copy_count=1 if i % 30 == 0 else 0,
+        )
+        for i in range(120)
+    ]
+    details = analyze_wallet_flow_segments_with_details(
+        rows,
+        min_segment_samples=24,
+        min_feature_samples=36,
+        train_fraction=0.6,
+    )
+    diagnostics = build_wallet_flow_rejection_diagnostics(
+        raw_results=details.raw_results,
+        final_results=details.results,
+    )
+    reason_counts: Counter[str] = Counter()
+    for row in diagnostics:
+        for reason in (reason for reason in row.rejection_reasons.split(";") if reason):
+            reason_counts[reason] += 1
+    assert reason_counts["duplicate_segment_competition"] >= 1
+    assert reason_counts["low_sample_count"] >= 1
+
+
+def test_near_miss_ranking() -> None:
+    diagnostics = [
+        WalletFlowRejectionDiagnostic(
+            rank=1,
+            asset="BTC",
+            market_id="m1",
+            market_slug="m1",
+            token_id="t1",
+            horizon_hours=1,
+            feature_name="net_flow_usdc",
+            segment_type="all",
+            segment_value="all",
+            final_grade="WATCHLIST",
+            retained_after_dedup=True,
+            rejection_reasons="improvement_below_cost_buffer;weak_win_rate",
+            sample_count=90,
+            test_samples=36,
+            unique_flow_hours=60,
+            active_wallet_coverage=0.75,
+            non_zero_net_flow_coverage=0.75,
+            test_improvement_over_baseline=0.0009,
+            net_test_improvement_after_cost=0.00015,
+            test_win_rate=0.57,
+            stability=0.60,
+        ),
+        WalletFlowRejectionDiagnostic(
+            rank=2,
+            asset="BTC",
+            market_id="m2",
+            market_slug="m2",
+            token_id="t2",
+            horizon_hours=1,
+            feature_name="net_flow_usdc",
+            segment_type="all",
+            segment_value="all",
+            final_grade="WATCHLIST",
+            retained_after_dedup=True,
+            rejection_reasons="weak_win_rate;low_sample_count",
+            sample_count=70,
+            test_samples=24,
+            unique_flow_hours=45,
+            active_wallet_coverage=0.68,
+            non_zero_net_flow_coverage=0.69,
+            test_improvement_over_baseline=0.0008,
+            net_test_improvement_after_cost=0.00005,
+            test_win_rate=0.55,
+            stability=0.55,
+        ),
+    ]
+    near_misses = rank_wallet_flow_near_misses(diagnostics, limit=2)
+    assert [item.candidate_rank for item in near_misses] == [1, 2]
+
+
+def test_strict_promotion_thresholds_unchanged() -> None:
+    grade = grade_wallet_flow_candidate(
+        sample_count=80,
+        required_samples=24,
+        train_test_direction_match=True,
+        test_improvement=0.0008,
+        net_test_improvement=0.0002,
+        test_win_rate=0.58,
+        stability=0.62,
+        test_samples=20,
+        learned_direction=1,
+        unique_flow_hours=48,
+        active_wallet_coverage=0.70,
+        non_zero_net_flow_coverage=0.70,
+    )
+    assert grade is WalletFlowCandidateGrade.SIMULATION_READY
 
 
 def test_empty_missing_wallet_flow_behavior() -> None:

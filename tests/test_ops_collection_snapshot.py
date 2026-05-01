@@ -6,6 +6,7 @@ from joint_research.ops.collection_snapshot import (
     SnapshotMetrics,
     SnapshotStep,
     classify_status,
+    load_wallet_flow_top_rejection_reasons,
     parse_metrics,
     parse_steps,
     write_summary,
@@ -86,6 +87,7 @@ def test_artifact_writing(tmp_path: Path) -> None:
     assert "status=MORE_DATA_NEEDED" in text
     assert "before_wallet_flow_rows=10" in text
     assert "after_wallet_flow_rows=20" in text
+    assert "top_rejection_reasons=unknown" in text
 
 
 def test_no_trade_safety_wording(tmp_path: Path) -> None:
@@ -111,3 +113,33 @@ def test_no_trade_safety_wording(tmp_path: Path) -> None:
     assert "No trades placed." in text
     assert "No API keys used." in text
     assert "NOT_TRADEABLE" in text
+
+
+def test_load_wallet_flow_top_rejection_reasons(tmp_path: Path) -> None:
+    diagnostics = tmp_path / "wallet_flow_rejection_diagnostics.csv"
+    diagnostics.write_text(
+        "\n".join(
+            [
+                "rejection_reasons",
+                "insufficient_unique_flow_hours;low_sample_count",
+                "low_sample_count;weak_win_rate",
+                "low_sample_count",
+                "",
+            ]
+        )
+        + "\n"
+    )
+    reasons = load_wallet_flow_top_rejection_reasons(diagnostics, limit=3)
+    assert reasons == [
+        ("low_sample_count", 3),
+        ("insufficient_unique_flow_hours", 1),
+        ("weak_win_rate", 1),
+    ]
+
+
+def test_load_wallet_flow_top_rejection_reasons_missing_file() -> None:
+    reasons = load_wallet_flow_top_rejection_reasons(
+        Path("/tmp/does-not-exist-wallet-flow-diagnostics.csv"),
+        limit=3,
+    )
+    assert reasons == []

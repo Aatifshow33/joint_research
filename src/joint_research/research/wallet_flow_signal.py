@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from enum import Enum
@@ -23,6 +23,22 @@ MIN_UNIQUE_FLOW_HOURS = 24
 MIN_ACTIVE_WALLET_COVERAGE = 0.50
 MIN_NON_ZERO_NET_FLOW_COVERAGE = 0.50
 DUPLICATE_SEGMENT_IMPROVEMENT_DELTA = 0.00035
+SIMULATION_READY_MIN_TEST_IMPROVEMENT = 0.0008
+SIMULATION_READY_MIN_NET_IMPROVEMENT = 0.0002
+SIMULATION_READY_MIN_WIN_RATE = 0.58
+SIMULATION_READY_MIN_STABILITY = 0.62
+SIMULATION_READY_MIN_SAMPLES = 80
+SIMULATION_READY_MIN_UNIQUE_HOURS = 48
+SIMULATION_READY_MIN_ACTIVE_WALLET_COVERAGE = 0.70
+SIMULATION_READY_MIN_NON_ZERO_NET_FLOW_COVERAGE = 0.70
+WATCHLIST_MIN_TEST_IMPROVEMENT = 0.0004
+WATCHLIST_MIN_WIN_RATE = 0.55
+WATCHLIST_MIN_STABILITY = 0.52
+WATCHLIST_MIN_SAMPLES = 48
+WATCHLIST_MIN_UNIQUE_HOURS = 32
+WATCHLIST_MIN_ACTIVE_WALLET_COVERAGE = 0.60
+WATCHLIST_MIN_NON_ZERO_NET_FLOW_COVERAGE = 0.60
+THIN_COPY_FLOW_MIN_COVERAGE = 0.10
 
 
 class WalletFlowCandidateGrade(str, Enum):
@@ -43,6 +59,7 @@ class WalletFlowCoverage:
 @dataclass(frozen=True)
 class WalletFlowStudyDetails:
     results: list[WalletFlowSignalResult]
+    raw_results: list[WalletFlowSignalResult]
     segment_rows_before_dedup: int
     segment_rows_after_dedup: int
     coverage: WalletFlowCoverage
@@ -121,6 +138,47 @@ class WalletFlowSignalReportPaths:
     summary_md: Path
     results_csv: Path
     candidates_json: Path
+    rejection_diagnostics_csv: Path
+    rejection_summary_md: Path
+
+
+@dataclass(frozen=True)
+class WalletFlowRejectionDiagnostic:
+    rank: int
+    asset: str
+    market_id: str
+    market_slug: str | None
+    token_id: str
+    horizon_hours: int
+    feature_name: str
+    segment_type: str
+    segment_value: str
+    final_grade: str
+    retained_after_dedup: bool
+    rejection_reasons: str
+    sample_count: int
+    test_samples: int
+    unique_flow_hours: int
+    active_wallet_coverage: float
+    non_zero_net_flow_coverage: float
+    test_improvement_over_baseline: float
+    net_test_improvement_after_cost: float
+    test_win_rate: float
+    stability: float
+
+
+@dataclass(frozen=True)
+class WalletFlowNearMiss:
+    rank: int
+    candidate_rank: int
+    candidate_key: str
+    final_grade: str
+    reasons: str
+    gap_to_cost_buffer: float
+    gap_to_watchlist_win_rate: float
+    gap_to_watchlist_stability: float
+    improvement: float
+    net_after_cost: float
 
 
 @dataclass(frozen=True)
@@ -221,6 +279,7 @@ def run_wallet_flow_signal_study_with_details(
     )
     return WalletFlowStudyDetails(
         results=analysis.results,
+        raw_results=analysis.raw_results,
         segment_rows_before_dedup=analysis.segment_rows_before_dedup,
         segment_rows_after_dedup=analysis.segment_rows_after_dedup,
         coverage=coverage,
@@ -390,6 +449,7 @@ def load_wallet_flow_observations(con: duckdb.DuckDBPyConnection) -> list[Wallet
 
 @dataclass(frozen=True)
 class _AnalysisDetails:
+    raw_results: list[WalletFlowSignalResult]
     results: list[WalletFlowSignalResult]
     segment_rows_before_dedup: int
     segment_rows_after_dedup: int
@@ -495,6 +555,7 @@ def analyze_wallet_flow_segments_with_details(
 
     deduped = _dedupe_segment_candidates(raw_results)
     return _AnalysisDetails(
+        raw_results=raw_results,
         results=rank_wallet_flow_results(deduped),
         segment_rows_before_dedup=len(raw_results),
         segment_rows_after_dedup=len(deduped),
@@ -600,16 +661,32 @@ def write_wallet_flow_signal_report(
     summary_md = output_dir / "wallet_flow_signal_summary.md"
     results_csv = output_dir / "wallet_flow_signal_results.csv"
     candidates_json = output_dir / "wallet_flow_signal_candidates.json"
+    rejection_diagnostics_csv = output_dir / "wallet_flow_rejection_diagnostics.csv"
+    rejection_summary_md = output_dir / "wallet_flow_rejection_summary.md"
 
     _write_results_csv(results_csv, ordered)
     candidates_json.write_text(
         json.dumps([_json_record(row) for row in candidates], indent=2, sort_keys=True) + "\n"
+    )
+    diagnostics = build_wallet_flow_rejection_diagnostics(
+        raw_results=study_details.raw_results if study_details is not None else ordered,
+        final_results=ordered,
+    )
+    _write_rejection_diagnostics_csv(rejection_diagnostics_csv, diagnostics)
+    rejection_summary_md.write_text(
+        _render_rejection_summary(
+            diagnostics=diagnostics,
+            final_results=ordered,
+            study_details=study_details,
+        )
     )
     summary_md.write_text(_render_summary(ordered, candidates, study_details=study_details))
     return WalletFlowSignalReportPaths(
         summary_md=summary_md,
         results_csv=results_csv,
         candidates_json=candidates_json,
+        rejection_diagnostics_csv=rejection_diagnostics_csv,
+        rejection_summary_md=rejection_summary_md,
     )
 
 
@@ -751,25 +828,25 @@ def grade_wallet_flow_candidate(
     if not train_test_direction_match:
         return WalletFlowCandidateGrade.WEAK
     if (
-        test_improvement >= 0.0008
-        and net_test_improvement >= 0.0002
-        and test_win_rate >= 0.58
-        and stability >= 0.62
-        and sample_count >= max(required_samples, 80)
-        and unique_flow_hours >= 48
-        and active_wallet_coverage >= 0.70
-        and non_zero_net_flow_coverage >= 0.70
+        test_improvement >= SIMULATION_READY_MIN_TEST_IMPROVEMENT
+        and net_test_improvement >= SIMULATION_READY_MIN_NET_IMPROVEMENT
+        and test_win_rate >= SIMULATION_READY_MIN_WIN_RATE
+        and stability >= SIMULATION_READY_MIN_STABILITY
+        and sample_count >= max(required_samples, SIMULATION_READY_MIN_SAMPLES)
+        and unique_flow_hours >= SIMULATION_READY_MIN_UNIQUE_HOURS
+        and active_wallet_coverage >= SIMULATION_READY_MIN_ACTIVE_WALLET_COVERAGE
+        and non_zero_net_flow_coverage >= SIMULATION_READY_MIN_NON_ZERO_NET_FLOW_COVERAGE
     ):
         return WalletFlowCandidateGrade.SIMULATION_READY
     if (
-        test_improvement >= 0.0004
+        test_improvement >= WATCHLIST_MIN_TEST_IMPROVEMENT
         and net_test_improvement > 0
-        and test_win_rate >= 0.55
-        and stability >= 0.52
-        and sample_count >= max(required_samples, 48)
-        and unique_flow_hours >= 32
-        and active_wallet_coverage >= 0.60
-        and non_zero_net_flow_coverage >= 0.60
+        and test_win_rate >= WATCHLIST_MIN_WIN_RATE
+        and stability >= WATCHLIST_MIN_STABILITY
+        and sample_count >= max(required_samples, WATCHLIST_MIN_SAMPLES)
+        and unique_flow_hours >= WATCHLIST_MIN_UNIQUE_HOURS
+        and active_wallet_coverage >= WATCHLIST_MIN_ACTIVE_WALLET_COVERAGE
+        and non_zero_net_flow_coverage >= WATCHLIST_MIN_NON_ZERO_NET_FLOW_COVERAGE
     ):
         return WalletFlowCandidateGrade.WATCHLIST
     if test_improvement > 0 and test_win_rate >= 0.50:
@@ -857,7 +934,7 @@ def _build_warnings(
     if evaluation.sample_count < max(required_samples + 8, 48) or unique_flow_hours < max(MIN_UNIQUE_FLOW_HOURS + 8, 32):
         warnings.append("low_sample_warning")
     copy_present = sum(1 for obs in observations if obs.copy_flow_count > 0)
-    if copy_present > 0 and copy_present / max(1, len(observations)) < 0.10:
+    if copy_present > 0 and copy_present / max(1, len(observations)) < THIN_COPY_FLOW_MIN_COVERAGE:
         warnings.append("thin_copy_flow_warning")
     if not evaluation.train_test_direction_match or evaluation.stability < 0.45:
         warnings.append("unstable_train_test_warning")
@@ -913,6 +990,172 @@ def _parse_warnings(value: str) -> list[str]:
     if not value:
         return []
     return [item for item in value.split(";") if item]
+
+
+def build_wallet_flow_rejection_diagnostics(
+    *,
+    raw_results: Sequence[WalletFlowSignalResult],
+    final_results: Sequence[WalletFlowSignalResult],
+) -> list[WalletFlowRejectionDiagnostic]:
+    final_by_key = {_candidate_identity(row): row for row in final_results}
+    diagnostics: list[WalletFlowRejectionDiagnostic] = []
+    for row in rank_wallet_flow_results(raw_results):
+        key = _candidate_identity(row)
+        retained = key in final_by_key
+        final_grade = final_by_key[key].grade.value if retained else WalletFlowCandidateGrade.REJECTED.value
+        reasons = _diagnostic_reasons(row=row, final_grade=final_grade, retained_after_dedup=retained)
+        diagnostics.append(
+            WalletFlowRejectionDiagnostic(
+                rank=row.rank,
+                asset=row.asset,
+                market_id=row.market_id,
+                market_slug=row.market_slug,
+                token_id=row.token_id,
+                horizon_hours=row.horizon_hours,
+                feature_name=row.feature_name,
+                segment_type=row.segment_type,
+                segment_value=row.segment_value,
+                final_grade=final_grade,
+                retained_after_dedup=retained,
+                rejection_reasons=";".join(reasons),
+                sample_count=row.sample_count,
+                test_samples=row.test_samples,
+                unique_flow_hours=row.unique_flow_hours,
+                active_wallet_coverage=row.active_wallet_coverage,
+                non_zero_net_flow_coverage=row.non_zero_net_flow_coverage,
+                test_improvement_over_baseline=row.test_improvement_over_baseline,
+                net_test_improvement_after_cost=row.net_test_improvement_after_cost,
+                test_win_rate=row.test_win_rate,
+                stability=row.stability,
+            )
+        )
+    return diagnostics
+
+
+def rank_wallet_flow_near_misses(
+    diagnostics: Sequence[WalletFlowRejectionDiagnostic],
+    *,
+    limit: int = 10,
+) -> list[WalletFlowNearMiss]:
+    ranked: list[tuple[float, WalletFlowRejectionDiagnostic]] = []
+    for row in diagnostics:
+        if not row.retained_after_dedup:
+            continue
+        if row.final_grade == WalletFlowCandidateGrade.SIMULATION_READY.value:
+            continue
+        if row.test_improvement_over_baseline <= 0:
+            continue
+        gap_cost = max(0.0, SIMULATION_READY_MIN_NET_IMPROVEMENT - row.net_test_improvement_after_cost)
+        gap_win = max(0.0, SIMULATION_READY_MIN_WIN_RATE - row.test_win_rate)
+        gap_stability = max(0.0, SIMULATION_READY_MIN_STABILITY - row.stability)
+        gap_samples = max(0.0, SIMULATION_READY_MIN_SAMPLES - row.sample_count) / SIMULATION_READY_MIN_SAMPLES
+        gap_unique_hours = max(0.0, SIMULATION_READY_MIN_UNIQUE_HOURS - row.unique_flow_hours) / SIMULATION_READY_MIN_UNIQUE_HOURS
+        gap_active_wallet = max(0.0, SIMULATION_READY_MIN_ACTIVE_WALLET_COVERAGE - row.active_wallet_coverage)
+        gap_non_zero = max(
+            0.0,
+            SIMULATION_READY_MIN_NON_ZERO_NET_FLOW_COVERAGE - row.non_zero_net_flow_coverage,
+        )
+        distance = (
+            gap_cost * 1000.0
+            + gap_win
+            + gap_stability
+            + gap_samples
+            + gap_unique_hours
+            + gap_active_wallet
+            + gap_non_zero
+        )
+        ranked.append((distance, row))
+
+    ordered = sorted(
+        ranked,
+        key=lambda pair: (
+            pair[0],
+            -pair[1].test_improvement_over_baseline,
+            -pair[1].sample_count,
+            pair[1].rank,
+            pair[1].market_slug or "",
+            pair[1].feature_name,
+            pair[1].segment_type,
+            pair[1].segment_value,
+        ),
+    )
+    near_misses: list[WalletFlowNearMiss] = []
+    for idx, (_distance, row) in enumerate(ordered[:limit], start=1):
+        near_misses.append(
+            WalletFlowNearMiss(
+                rank=idx,
+                candidate_rank=row.rank,
+                candidate_key=_diagnostic_candidate_key(row),
+                final_grade=row.final_grade,
+                reasons=row.rejection_reasons,
+                gap_to_cost_buffer=max(
+                    0.0,
+                    SIMULATION_READY_MIN_NET_IMPROVEMENT - row.net_test_improvement_after_cost,
+                ),
+                gap_to_watchlist_win_rate=max(0.0, WATCHLIST_MIN_WIN_RATE - row.test_win_rate),
+                gap_to_watchlist_stability=max(0.0, WATCHLIST_MIN_STABILITY - row.stability),
+                improvement=row.test_improvement_over_baseline,
+                net_after_cost=row.net_test_improvement_after_cost,
+            )
+        )
+    return near_misses
+
+
+def _diagnostic_reasons(
+    *,
+    row: WalletFlowSignalResult,
+    final_grade: str,
+    retained_after_dedup: bool,
+) -> list[str]:
+    reasons: set[str] = set()
+    if not retained_after_dedup:
+        reasons.add("duplicate_segment_competition")
+
+    promoted = final_grade == WalletFlowCandidateGrade.SIMULATION_READY.value
+    if not promoted:
+        if row.sample_count < SIMULATION_READY_MIN_SAMPLES or row.test_samples < 12 or row.learned_direction == 0:
+            reasons.add("low_sample_count")
+        if row.unique_flow_hours < SIMULATION_READY_MIN_UNIQUE_HOURS:
+            reasons.add("insufficient_unique_flow_hours")
+        if row.active_wallet_coverage < SIMULATION_READY_MIN_ACTIVE_WALLET_COVERAGE:
+            reasons.add("insufficient_active_wallet_coverage")
+        if row.non_zero_net_flow_coverage < SIMULATION_READY_MIN_NON_ZERO_NET_FLOW_COVERAGE:
+            reasons.add("insufficient_non_zero_net_flow_coverage")
+        if (not row.train_test_direction_match) or row.stability < SIMULATION_READY_MIN_STABILITY:
+            reasons.add("unstable_train_test_behavior")
+        if row.net_test_improvement_after_cost < SIMULATION_READY_MIN_NET_IMPROVEMENT:
+            reasons.add("improvement_below_cost_buffer")
+        if row.test_improvement_over_baseline < WATCHLIST_MIN_TEST_IMPROVEMENT:
+            reasons.add("weak_or_negative_test_improvement")
+        if row.test_win_rate < SIMULATION_READY_MIN_WIN_RATE:
+            reasons.add("weak_win_rate")
+        if _copy_flow_is_thin(row):
+            reasons.add("copy_flow_too_thin")
+
+    return sorted(reasons)
+
+
+def _copy_flow_is_thin(row: WalletFlowSignalResult) -> bool:
+    return "thin_copy_flow_warning" in _parse_warnings(row.warnings)
+
+
+def _candidate_identity(row: WalletFlowSignalResult) -> tuple[str, str, str, int, str, str, str]:
+    return (
+        row.asset,
+        row.market_id,
+        row.token_id,
+        row.horizon_hours,
+        row.feature_name,
+        row.segment_type,
+        row.segment_value,
+    )
+
+
+def _diagnostic_candidate_key(row: WalletFlowRejectionDiagnostic) -> str:
+    return (
+        f"{row.asset}:{row.market_slug or row.market_id}:{row.token_id}:"
+        f"{row.horizon_hours}h:{row.feature_name}:{row.segment_type}:{row.segment_value}"
+    )
 
 
 def _score_result(
@@ -1102,6 +1345,132 @@ def _write_results_csv(path: Path, rows: Sequence[WalletFlowSignalResult]) -> No
             writer.writerow(_json_record(row))
 
 
+def _write_rejection_diagnostics_csv(
+    path: Path,
+    rows: Sequence[WalletFlowRejectionDiagnostic],
+) -> None:
+    fieldnames = list(_rejection_json_record(rows[0]).keys()) if rows else list(_empty_rejection_record())
+    with path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, lineterminator="\n")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(_rejection_json_record(row))
+
+
+def _render_rejection_summary(
+    *,
+    diagnostics: Sequence[WalletFlowRejectionDiagnostic],
+    final_results: Sequence[WalletFlowSignalResult],
+    study_details: WalletFlowStudyDetails | None,
+) -> str:
+    final_grade_counts = {
+        grade.value: sum(1 for row in final_results if row.grade is grade)
+        for grade in WalletFlowCandidateGrade
+    }
+    reason_counter: Counter[str] = Counter()
+    for row in diagnostics:
+        for reason in _parse_warnings(row.rejection_reasons):
+            reason_counter[reason] += 1
+    top_reasons = reason_counter.most_common(3)
+    dropped_duplicate = sum(1 for row in diagnostics if not row.retained_after_dedup)
+    near_misses = rank_wallet_flow_near_misses(diagnostics, limit=5)
+    lines = [
+        "# Wallet Flow Rejection Diagnostics",
+        "",
+        "**EXPLORATORY ONLY - NOT TRADEABLE.**",
+        "",
+        "Diagnostics explain why wallet-flow segments were not promoted to SIMULATION_READY.",
+        "",
+        "## Counts",
+        "",
+        f"- total_candidates_evaluated={len(diagnostics)}",
+        f"- final_simulation_ready={final_grade_counts[WalletFlowCandidateGrade.SIMULATION_READY.value]}",
+        f"- final_watchlist={final_grade_counts[WalletFlowCandidateGrade.WATCHLIST.value]}",
+        f"- final_weak={final_grade_counts[WalletFlowCandidateGrade.WEAK.value]}",
+        f"- final_rejected={final_grade_counts[WalletFlowCandidateGrade.REJECTED.value]}",
+        f"- dropped_by_duplicate_competition={dropped_duplicate}",
+    ]
+
+    if study_details is not None:
+        lines.extend(
+            [
+                f"- segment_rows_before_dedup={study_details.segment_rows_before_dedup}",
+                f"- segment_rows_after_dedup={study_details.segment_rows_after_dedup}",
+            ]
+        )
+
+    lines.extend(["", "## Rejection Reason Counts", ""])
+    if not reason_counter:
+        lines.append("- none")
+    else:
+        for reason, count in sorted(reason_counter.items(), key=lambda item: (-item[1], item[0])):
+            lines.append(f"- {reason}: {count}")
+
+    lines.extend(["", "## Top Blockers", ""])
+    if not top_reasons:
+        lines.append("- none")
+    else:
+        for reason, count in top_reasons:
+            lines.append(f"- {reason}: {count}")
+
+    lines.extend(["", "## Top Near-Miss Candidates", ""])
+    if not near_misses:
+        lines.append("- none")
+    else:
+        lines.append("| Rank | Candidate Rank | Final Grade | Candidate | Improvement | Net After Cost | Reasons |")
+        lines.append("| ---: | ---: | --- | --- | ---: | ---: | --- |")
+        for item in near_misses:
+            lines.append(
+                f"| {item.rank} | {item.candidate_rank} | {item.final_grade} | "
+                f"{_escape_md(item.candidate_key)} | {item.improvement:+.5f} | "
+                f"{item.net_after_cost:+.5f} | {_escape_md(item.reasons)} |"
+            )
+
+    lines.extend(["", "## Recommended Next Data Action", ""])
+    lines.extend(_recommended_data_action_lines(reason_counter))
+    lines.extend(
+        [
+            "",
+            "## Guardrails",
+            "",
+            "- Exploratory research only.",
+            "- Not tradeable.",
+            "- No live trading or execution.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _recommended_data_action_lines(reason_counter: Counter[str]) -> list[str]:
+    if not reason_counter:
+        return ["- Continue regular collection and re-run diagnostics."]
+    top_reason, _count = reason_counter.most_common(1)[0]
+    if top_reason in {"insufficient_unique_flow_hours", "low_sample_count"}:
+        return [
+            "- Priority: continue hourly wallet-flow backfill until unique-hour continuity and sample depth rise further.",
+            "- Focus the next run on markets with the largest missing-hour gaps and sparse hourly coverage.",
+        ]
+    if top_reason in {"insufficient_active_wallet_coverage", "insufficient_non_zero_net_flow_coverage"}:
+        return [
+            "- Priority: collect more active flow windows (hours with real wallet participation and non-zero net flow).",
+            "- Focus ingestion on markets/assets showing active trade bursts instead of quiet intervals.",
+        ]
+    if top_reason in {"improvement_below_cost_buffer", "weak_or_negative_test_improvement"}:
+        return [
+            "- Priority: widen historical coverage before changing thresholds; current edge does not clear the cost buffer.",
+            "- Keep filters unchanged and collect more diverse market regimes to retest improvement stability.",
+        ]
+    if top_reason == "copy_flow_too_thin":
+        return [
+            "- Priority: increase copy-flow event coverage for the same market-hour windows.",
+            "- Keep copy-flow gating unchanged; gather more real copy-flow observations before retesting.",
+        ]
+    return [
+        "- Priority: continue scheduled collection and rerun wallet-flow diagnostics after additional hourly coverage.",
+        "- Keep current promotion thresholds unchanged; use diagnostics counts as the blocker map.",
+    ]
+
+
 def _render_summary(
     rows: Sequence[WalletFlowSignalResult],
     candidates: Sequence[WalletFlowSignalResult],
@@ -1224,6 +1593,10 @@ def _json_record(row: WalletFlowSignalResult) -> dict[str, object]:
     return record
 
 
+def _rejection_json_record(row: WalletFlowRejectionDiagnostic) -> dict[str, object]:
+    return asdict(row)
+
+
 def _empty_record() -> dict[str, object]:
     return {
         "rank": "",
@@ -1262,6 +1635,32 @@ def _empty_record() -> dict[str, object]:
         "grade": "",
         "filter_reason": "",
         "warnings": "",
+    }
+
+
+def _empty_rejection_record() -> dict[str, object]:
+    return {
+        "rank": "",
+        "asset": "",
+        "market_id": "",
+        "market_slug": "",
+        "token_id": "",
+        "horizon_hours": "",
+        "feature_name": "",
+        "segment_type": "",
+        "segment_value": "",
+        "final_grade": "",
+        "retained_after_dedup": "",
+        "rejection_reasons": "",
+        "sample_count": "",
+        "test_samples": "",
+        "unique_flow_hours": "",
+        "active_wallet_coverage": "",
+        "non_zero_net_flow_coverage": "",
+        "test_improvement_over_baseline": "",
+        "net_test_improvement_after_cost": "",
+        "test_win_rate": "",
+        "stability": "",
     }
 
 

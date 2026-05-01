@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -125,6 +127,7 @@ def write_summary(
     warnings: list[str],
     metrics: SnapshotMetrics,
     status: str,
+    wallet_flow_top_rejection_reasons: list[tuple[str, int]] | None = None,
 ) -> None:
     summary_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -164,6 +167,13 @@ def write_summary(
     else:
         lines.append("- none")
 
+    lines.extend(["", "## Wallet-Flow Rejection Diagnostics", ""])
+    if not wallet_flow_top_rejection_reasons:
+        lines.append("- top_rejection_reasons=unknown (diagnostics artifact missing)")
+    else:
+        for reason, count in wallet_flow_top_rejection_reasons[:3]:
+            lines.append(f"- {reason}: {count}")
+
     lines.extend(
         [
             "",
@@ -187,6 +197,12 @@ def main() -> None:
     parser.add_argument("--log-file", type=Path, required=True)
     parser.add_argument("--summary-path", type=Path, required=True)
     parser.add_argument("--warnings-file", type=Path, required=False)
+    parser.add_argument(
+        "--wallet-flow-rejection-csv",
+        type=Path,
+        required=False,
+        default=Path("artifacts/research/wallet_flow_signal/wallet_flow_rejection_diagnostics.csv"),
+    )
     args = parser.parse_args()
 
     log_text = args.log_file.read_text() if args.log_file.exists() else ""
@@ -210,12 +226,17 @@ def main() -> None:
         paper_ready=metrics.paper_ready,
         any_failures=any(step.exit_code != 0 for step in steps),
     )
+    top_rejection_reasons = load_wallet_flow_top_rejection_reasons(
+        args.wallet_flow_rejection_csv,
+        limit=3,
+    )
     write_summary(
         summary_path=args.summary_path,
         steps=steps,
         warnings=warnings,
         metrics=metrics,
         status=status,
+        wallet_flow_top_rejection_reasons=top_rejection_reasons,
     )
 
 
@@ -249,6 +270,29 @@ def _extract_row_counts(text: str) -> str:
     kvs = parse_key_values(text)
     parts = [f"{k}={kvs[k]}" for k in keys if k in kvs]
     return " ".join(parts)
+
+
+def load_wallet_flow_top_rejection_reasons(
+    path: Path,
+    *,
+    limit: int = 3,
+) -> list[tuple[str, int]]:
+    if not path.exists():
+        return []
+    counts: Counter[str] = Counter()
+    try:
+        with path.open(newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                raw = (row.get("rejection_reasons") or "").strip()
+                if not raw:
+                    continue
+                for reason in raw.split(";"):
+                    if reason:
+                        counts[reason] += 1
+    except (OSError, csv.Error):
+        return []
+    return sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:limit]
 
 
 def _status_explanation(status: str) -> str:
