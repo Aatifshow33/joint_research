@@ -17,6 +17,7 @@ from joint_research.research.wallet_flow_backfill_batches import (
     write_wallet_flow_backfill_batches_artifacts,
 )
 from joint_research.research.wallet_flow_backfill_manifest import (
+    SUPPORTED_COMMAND_TEMPLATE_PRESETS,
     write_wallet_flow_backfill_manifest_artifacts,
 )
 from joint_research.research.wallet_flow_manifest_review_gate import (
@@ -779,8 +780,27 @@ def research_wallet_flow_backfill_manifest(
         "--command-template",
         help="Optional format string using {market_id}, {market_slug}, {asset}, {batch_id}, {rank}.",
     ),
+    command_template_preset: str | None = typer.Option(
+        None,
+        "--command-template-preset",
+        help="Built-in template preset: none|default|review_echo.",
+    ),
 ) -> None:
     """Generate a deterministic wallet-flow backfill execution manifest (review-only)."""
+
+    if command_template is not None and command_template_preset is not None:
+        raise typer.BadParameter(
+            "Provide only one of --command-template or --command-template-preset.",
+            param_hint="--command-template-preset",
+        )
+    if command_template_preset is not None:
+        normalized = command_template_preset.strip().lower()
+        if normalized not in set(SUPPORTED_COMMAND_TEMPLATE_PRESETS):
+            raise typer.BadParameter(
+                "command-template-preset must be one of: "
+                + ", ".join(SUPPORTED_COMMAND_TEMPLATE_PRESETS),
+                param_hint="--command-template-preset",
+            )
 
     thresholds = WalletFlowBackfillPriorityThresholds(
         min_wallet_flow_rows=min_wallet_flow_rows,
@@ -795,6 +815,7 @@ def research_wallet_flow_backfill_manifest(
         max_batches=max_batches,
         dry_run=dry_run,
         command_template=command_template,
+        command_template_preset=command_template_preset,
     )
 
     typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")

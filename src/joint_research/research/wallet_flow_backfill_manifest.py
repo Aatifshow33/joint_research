@@ -23,6 +23,15 @@ from joint_research.research.wallet_flow_backfill_priority import (
 MANIFEST_MD_FILENAME = "wallet_flow_backfill_execution_manifest.md"
 MANIFEST_CSV_FILENAME = "wallet_flow_backfill_execution_manifest.csv"
 MANIFEST_JSON_FILENAME = "wallet_flow_backfill_execution_manifest.json"
+REVIEW_ECHO_COMMAND_TEMPLATE = (
+    "review_wallet_flow_backfill "
+    "market_id={market_id} "
+    "market_slug={market_slug} "
+    "asset={asset} "
+    "batch_id={batch_id} "
+    "rank={rank}"
+)
+SUPPORTED_COMMAND_TEMPLATE_PRESETS: tuple[str, ...] = ("none", "default", "review_echo")
 
 
 @dataclass(frozen=True)
@@ -64,7 +73,12 @@ def run_wallet_flow_backfill_manifest_plan(
     max_batches: int = 5,
     dry_run: bool = True,
     command_template: str | None = None,
+    command_template_preset: str | None = None,
 ) -> WalletFlowBackfillManifestPlan:
+    resolved_template = resolve_wallet_flow_command_template(
+        command_template=command_template,
+        command_template_preset=command_template_preset,
+    )
     batches_plan: WalletFlowBackfillBatchesPlan = run_wallet_flow_backfill_batches_plan(
         coverage_csv=coverage_csv,
         thresholds=thresholds,
@@ -87,7 +101,7 @@ def run_wallet_flow_backfill_manifest_plan(
             asset=priority.asset,
             batch_id=batch_id,
             rank=priority.rank,
-            command_template=command_template,
+            command_template=resolved_template,
         )
         draft_rows.append(
             {
@@ -111,7 +125,7 @@ def run_wallet_flow_backfill_manifest_plan(
         batch_size=batch_size,
         max_batches=max_batches,
         dry_run=dry_run,
-        command_template=command_template,
+        command_template=resolved_template,
         rows=draft_rows,
     )
 
@@ -148,7 +162,7 @@ def run_wallet_flow_backfill_manifest_plan(
         batch_size=batch_size,
         max_batches=max_batches,
         dry_run=dry_run,
-        command_template=command_template,
+        command_template=resolved_template,
         manifest_id=manifest_id,
         rows=rows,
         batches=batches,
@@ -164,6 +178,7 @@ def write_wallet_flow_backfill_manifest_artifacts(
     max_batches: int = 5,
     dry_run: bool = True,
     command_template: str | None = None,
+    command_template_preset: str | None = None,
 ) -> tuple[Path, Path, Path, WalletFlowBackfillManifestPlan]:
     output_dir.mkdir(parents=True, exist_ok=True)
     plan = run_wallet_flow_backfill_manifest_plan(
@@ -173,6 +188,7 @@ def write_wallet_flow_backfill_manifest_artifacts(
         max_batches=max_batches,
         dry_run=dry_run,
         command_template=command_template,
+        command_template_preset=command_template_preset,
     )
 
     report_path = output_dir / MANIFEST_MD_FILENAME
@@ -263,6 +279,30 @@ def _resolve_ingest_command(
     return ("REVIEW_READY", rendered)
 
 
+def resolve_wallet_flow_command_template(
+    *,
+    command_template: str | None,
+    command_template_preset: str | None,
+) -> str | None:
+    if command_template is not None and command_template_preset is not None:
+        raise ValueError(
+            "command_template and command_template_preset are mutually exclusive; provide only one."
+        )
+    if command_template is not None:
+        return command_template
+    if command_template_preset is None:
+        return None
+    normalized = command_template_preset.strip().lower()
+    if normalized in {"none", "default"}:
+        return None
+    if normalized == "review_echo":
+        return REVIEW_ECHO_COMMAND_TEMPLATE
+    raise ValueError(
+        "unsupported command_template_preset="
+        f"{command_template_preset}; expected one of {', '.join(SUPPORTED_COMMAND_TEMPLATE_PRESETS)}"
+    )
+
+
 def _stable_json(payload: object) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
@@ -333,4 +373,3 @@ def _write_manifest_json(path: Path, plan: WalletFlowBackfillManifestPlan) -> No
         "rows": [asdict(row) for row in plan.rows],
     }
     path.write_text(_stable_json(payload) + "\n")
-
