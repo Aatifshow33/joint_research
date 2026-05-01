@@ -19,6 +19,9 @@ from joint_research.research.wallet_flow_backfill_batches import (
 from joint_research.research.wallet_flow_backfill_manifest import (
     write_wallet_flow_backfill_manifest_artifacts,
 )
+from joint_research.research.wallet_flow_manifest_review_gate import (
+    run_wallet_flow_manifest_review_gate,
+)
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
@@ -806,6 +809,53 @@ def research_wallet_flow_backfill_manifest(
     typer.echo(f"manifest_report={report_path}")
     typer.echo(f"manifest_csv={csv_path}")
     typer.echo(f"manifest_json={json_path}")
+
+
+@research_app.command("wallet-flow-manifest-review-gate")
+def research_wallet_flow_manifest_review_gate(
+    manifest_json: Path = typer.Option(
+        Path(
+            "artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_backfill_execution_manifest.json"
+        ),
+        "--manifest-json",
+        help="Execution manifest JSON produced by wallet-flow-backfill-manifest.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help="Directory for wallet_flow_manifest_review_gate.md.",
+    ),
+    allow_review_required: bool = typer.Option(
+        False,
+        "--allow-review-required/--no-allow-review-required",
+        help="Permit REVIEW_REQUIRED manifest rows to pass the gate.",
+    ),
+    require_dry_run: bool = typer.Option(
+        True,
+        "--require-dry-run/--no-require-dry-run",
+        help="Fail the gate if manifest dry_run is not true.",
+    ),
+) -> None:
+    """Validate a wallet-flow execution manifest for review safety (no execution)."""
+
+    result = run_wallet_flow_manifest_review_gate(
+        manifest_json=manifest_json.resolve(),
+        output_dir=output_dir.resolve(),
+        allow_review_required=allow_review_required,
+        require_dry_run=require_dry_run,
+    )
+
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"gate_status={result.status}")
+    typer.echo(f"manifest_rows={result.manifest_rows}")
+    typer.echo(f"failures={len(result.failures)}")
+    typer.echo(f"warnings={len(result.warnings)}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo("No ingestion executed.")
+    typer.echo(f"review_gate_report={result.report_path}")
 
 
 @research_app.command("wallet-flow-signal")

@@ -151,7 +151,7 @@ def test_command_template_rendering(tmp_path) -> None:
         dry_run=True,
         command_template="echo {batch_id} {rank} {asset} {market_id} {market_slug}",
     )
-    assert plan.rows[0].command_status == "TEMPLATE"
+    assert plan.rows[0].command_status == "REVIEW_READY"
     assert plan.rows[0].ingest_command.startswith("echo ")
 
 

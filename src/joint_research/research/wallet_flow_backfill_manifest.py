@@ -260,7 +260,7 @@ def _resolve_ingest_command(
         batch_id=batch_id,
         rank=rank,
     )
-    return ("TEMPLATE", rendered)
+    return ("REVIEW_READY", rendered)
 
 
 def _stable_json(payload: object) -> str:
@@ -327,6 +327,7 @@ def _write_manifest_json(path: Path, plan: WalletFlowBackfillManifestPlan) -> No
         "batch_size": plan.batch_size,
         "max_batches": plan.max_batches,
         "batches": plan.batches,
+        "manifest_rows": len(plan.rows),
         "thresholds": asdict(plan.thresholds),
         "command_template": plan.command_template,
         "rows": [asdict(row) for row in plan.rows],
