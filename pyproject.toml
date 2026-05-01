@@ -29,7 +29,7 @@ dev = [
 ]
 
 [project.scripts]
-joint-research = "joint_research.cli:app"
+joint-research = "joint_research.cli_integrated:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/joint_research"]
