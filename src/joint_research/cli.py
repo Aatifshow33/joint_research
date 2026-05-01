@@ -270,6 +270,8 @@ def research_lead_lag(
     typer.echo(f"summary={report_paths.summary_md}")
     typer.echo(f"results_csv={report_paths.results_csv}")
     typer.echo(f"candidates_json={report_paths.candidates_json}")
+    if diagnostic_triage_md is not None:
+        typer.echo(f"diagnostic_triage={diagnostic_triage_md}")
 
     if not token_results:
         typer.echo("no tokens met the min_observations threshold. backfill more data.")
@@ -545,14 +547,23 @@ def research_wallet_flow_signal(
         ),
     ),
     show_top: int = typer.Option(10, help="Print the top-N wallet-flow candidates."),
+    diagnostic_report: bool = typer.Option(
+        False,
+        "--diagnostic-report/--no-diagnostic-report",
+        help="Also write wallet_flow_diagnostic_triage.md from rejection diagnostics.",
+    ),
     warehouse_root: Path = typer.Option(None),
 ) -> None:
     """Run wallet-flow-conditioned Polymarket -> crypto signal analysis."""
 
     from joint_research.research.wallet_flow_signal import (  # noqa: PLC0415
         WalletFlowCandidateGrade,
+        build_wallet_flow_rejection_diagnostics,
         run_wallet_flow_signal_study_with_details,
         write_wallet_flow_signal_report,
+    )
+    from joint_research.research.wallet_flow_diagnostic_triage import (  # noqa: PLC0415
+        write_wallet_flow_diagnostic_triage_report,
     )
 
     paths = _resolve_paths(warehouse_root)
@@ -563,11 +574,22 @@ def research_wallet_flow_signal(
         train_fraction=train_fraction,
     )
     results = study_details.results
+    resolved_output_dir = output_dir.resolve()
     report_paths = write_wallet_flow_signal_report(
-        output_dir=output_dir.resolve(),
+        output_dir=resolved_output_dir,
         results=results,
         study_details=study_details,
     )
+    diagnostic_triage_md = None
+    if diagnostic_report:
+        diagnostics = build_wallet_flow_rejection_diagnostics(
+            raw_results=study_details.raw_results,
+            final_results=results,
+        )
+        diagnostic_triage_md = write_wallet_flow_diagnostic_triage_report(
+            output_dir=resolved_output_dir,
+            diagnostics=diagnostics,
+        )
     counts = {
         grade.value: sum(1 for result in results if result.grade is grade)
         for grade in WalletFlowCandidateGrade
