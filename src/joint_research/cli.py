@@ -528,6 +528,78 @@ def research_derivatives_regime(
         )
 
 
+@research_app.command("wallet-flow-coverage-gate")
+def research_wallet_flow_coverage_gate(
+    coverage_csv: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_coverage.csv"),
+        "--coverage-csv",
+        help="Wallet-flow coverage CSV produced by the backfill planner.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/research/wallet_flow_signal"),
+        "--output-dir",
+        "--out-path",
+        help="Directory for wallet_flow_coverage_gate.md.",
+    ),
+    min_covered_markets: int = typer.Option(
+        25,
+        help="Minimum markets with wallet-flow rows required for PASS.",
+    ),
+    min_coverage_ratio: float = typer.Option(
+        0.20,
+        help="Minimum covered_markets / total_markets required for PASS.",
+    ),
+    min_total_wallet_flow_rows: int = typer.Option(
+        1000,
+        help="Minimum total wallet-flow rows required for PASS.",
+    ),
+    min_market_flow_hourly_rows: int = typer.Option(
+        500,
+        help="Minimum market-flow hourly rows required for PASS.",
+    ),
+    min_whale_flow_hourly_rows: int = typer.Option(
+        500,
+        help="Minimum whale-flow hourly rows required for PASS.",
+    ),
+    show_top: int = typer.Option(10, help="Top covered markets to include in the report."),
+) -> None:
+    """Run a non-tradeable wallet-flow backfill coverage gate."""
+
+    from joint_research.research.wallet_flow_coverage_gate import (  # noqa: PLC0415
+        WalletFlowCoverageGateThresholds,
+        write_wallet_flow_coverage_gate_report,
+    )
+
+    thresholds = WalletFlowCoverageGateThresholds(
+        min_covered_markets=min_covered_markets,
+        min_coverage_ratio=min_coverage_ratio,
+        min_total_wallet_flow_rows=min_total_wallet_flow_rows,
+        min_market_flow_hourly_rows=min_market_flow_hourly_rows,
+        min_whale_flow_hourly_rows=min_whale_flow_hourly_rows,
+    )
+    report_path, gate = write_wallet_flow_coverage_gate_report(
+        coverage_csv=coverage_csv.resolve(),
+        output_dir=output_dir.resolve(),
+        thresholds=thresholds,
+        top_limit=show_top,
+    )
+
+    typer.echo(
+        "EXPLORATORY ONLY - NOT TRADEABLE\n"
+        f"gate_status={gate.status} "
+        f"covered_markets={gate.covered_markets} "
+        f"total_markets={gate.total_markets} "
+        f"coverage_ratio={gate.coverage_ratio:.4f} "
+        f"wallet_flow_rows={gate.total_wallet_flow_rows}"
+    )
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo(f"coverage_report={report_path}")
+    if gate.failure_reasons:
+        typer.echo("failure_reasons=" + ";".join(gate.failure_reasons))
+
+
 @research_app.command("wallet-flow-signal")
 def research_wallet_flow_signal(
     min_segment_samples: int = typer.Option(
