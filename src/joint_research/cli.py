@@ -38,6 +38,9 @@ from joint_research.research.wallet_flow_guarded_operator_handoff import (
 from joint_research.research.wallet_flow_operator_approval_ledger import (
     write_wallet_flow_operator_approval_ledger,
 )
+from joint_research.research.wallet_flow_approval_execution_contract import (
+    write_wallet_flow_approval_execution_contract,
+)
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
@@ -1181,6 +1184,62 @@ def research_wallet_flow_operator_approval_ledger(
     typer.echo("No manifest commands executed.")
     typer.echo(f"operator_approval_ledger={artifacts.ledger_md}")
     typer.echo(f"operator_approval_ledger_json={artifacts.ledger_json}")
+
+
+@research_app.command("wallet-flow-approval-execution-contract")
+def research_wallet_flow_approval_execution_contract(
+    approval_ledger_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_operator_approval_ledger.json"),
+        "--approval-ledger-json",
+        help="Operator approval ledger JSON path.",
+    ),
+    guarded_handoff_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_guarded_operator_handoff.json"),
+        "--guarded-handoff-json",
+        help="Guarded operator handoff JSON path.",
+    ),
+    dry_run_plan_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_dry_run_execution_plan.json"),
+        "--dry-run-plan-json",
+        help="Dry-run execution plan JSON path.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_approval_execution_contract.md and "
+            "wallet_flow_approval_execution_contract.json."
+        ),
+    ),
+) -> None:
+    """Write deterministic approval-to-execution contract artifact (no execution)."""
+
+    artifacts = write_wallet_flow_approval_execution_contract(
+        approval_ledger_json=approval_ledger_json.resolve(),
+        guarded_handoff_json=guarded_handoff_json.resolve(),
+        dry_run_plan_json=dry_run_plan_json.resolve(),
+        output_dir=output_dir.resolve(),
+    )
+    contract = artifacts.contract
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"contract_status={contract.contract_status}")
+    typer.echo(f"ledger_status={contract.ledger_status}")
+    typer.echo(f"decision={contract.decision}")
+    typer.echo(f"handoff_status={contract.handoff_status}")
+    typer.echo(f"plan_status={contract.plan_status}")
+    typer.echo(f"approval_required={str(contract.approval_required).lower()}")
+    typer.echo(f"manual_operator_only={str(contract.manual_operator_only).lower()}")
+    typer.echo(f"no_execution={str(contract.no_execution).lower()}")
+    typer.echo(f"no_ingestion={str(contract.no_ingestion).lower()}")
+    typer.echo(f"live_adapter_enabled={str(contract.live_adapter_enabled).lower()}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo("No ingestion executed.")
+    typer.echo("No manifest commands executed.")
+    typer.echo(f"approval_execution_contract={artifacts.contract_md}")
+    typer.echo(f"approval_execution_contract_json={artifacts.contract_json}")
 
 
 @research_app.command("wallet-flow-signal")
