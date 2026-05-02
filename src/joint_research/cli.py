@@ -41,6 +41,9 @@ from joint_research.research.wallet_flow_operator_approval_ledger import (
 from joint_research.research.wallet_flow_approval_execution_contract import (
     write_wallet_flow_approval_execution_contract,
 )
+from joint_research.research.wallet_flow_contract_audit_receipt import (
+    write_wallet_flow_contract_audit_receipt,
+)
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
@@ -1240,6 +1243,84 @@ def research_wallet_flow_approval_execution_contract(
     typer.echo("No manifest commands executed.")
     typer.echo(f"approval_execution_contract={artifacts.contract_md}")
     typer.echo(f"approval_execution_contract_json={artifacts.contract_json}")
+
+
+@research_app.command("wallet-flow-contract-audit-receipt")
+def research_wallet_flow_contract_audit_receipt(
+    approval_execution_contract_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_approval_execution_contract.json"),
+        "--approval-execution-contract-json",
+        help="Approval execution contract JSON path.",
+    ),
+    approval_ledger_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_operator_approval_ledger.json"),
+        "--approval-ledger-json",
+        help="Operator approval ledger JSON path.",
+    ),
+    guarded_handoff_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_guarded_operator_handoff.json"),
+        "--guarded-handoff-json",
+        help="Guarded operator handoff JSON path.",
+    ),
+    dry_run_plan_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_dry_run_execution_plan.json"),
+        "--dry-run-plan-json",
+        help="Dry-run execution plan JSON path.",
+    ),
+    approved_packet_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_approved_manifest_packet.json"),
+        "--approved-packet-json",
+        help="Approved manifest packet JSON path.",
+    ),
+    audit_index_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_manifest_audit_index.json"),
+        "--audit-index-json",
+        help="Manifest audit index JSON path.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_contract_audit_receipt.md and "
+            "wallet_flow_contract_audit_receipt.json."
+        ),
+    ),
+) -> None:
+    """Write deterministic wallet-flow contract audit receipt (no execution)."""
+
+    artifacts = write_wallet_flow_contract_audit_receipt(
+        approval_execution_contract_json=approval_execution_contract_json.resolve(),
+        approval_ledger_json=approval_ledger_json.resolve(),
+        guarded_handoff_json=guarded_handoff_json.resolve(),
+        dry_run_plan_json=dry_run_plan_json.resolve(),
+        approved_packet_json=approved_packet_json.resolve(),
+        audit_index_json=audit_index_json.resolve(),
+        output_dir=output_dir.resolve(),
+    )
+    receipt = artifacts.receipt
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"receipt_status={receipt.receipt_status}")
+    typer.echo(f"contract_status={receipt.contract_status}")
+    typer.echo(f"ledger_status={receipt.ledger_status}")
+    typer.echo(f"decision={receipt.decision}")
+    typer.echo(f"handoff_status={receipt.handoff_status}")
+    typer.echo(f"plan_status={receipt.plan_status}")
+    typer.echo(f"approved_packet_status={receipt.approved_packet_status}")
+    typer.echo(f"audit_status={receipt.audit_status}")
+    typer.echo(f"approval_required={str(receipt.approval_required).lower()}")
+    typer.echo(f"manual_operator_only={str(receipt.manual_operator_only).lower()}")
+    typer.echo(f"no_execution={str(receipt.no_execution).lower()}")
+    typer.echo(f"no_ingestion={str(receipt.no_ingestion).lower()}")
+    typer.echo(f"live_adapter_enabled={str(receipt.live_adapter_enabled).lower()}")
+    typer.echo(f"no_orders={str(receipt.no_orders).lower()}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo("No ingestion executed.")
+    typer.echo("No manifest commands executed.")
+    typer.echo(f"contract_audit_receipt={artifacts.receipt_md}")
+    typer.echo(f"contract_audit_receipt_json={artifacts.receipt_json}")
 
 
 @research_app.command("wallet-flow-signal")
