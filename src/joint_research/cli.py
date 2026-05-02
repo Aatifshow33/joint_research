@@ -44,6 +44,9 @@ from joint_research.research.wallet_flow_approval_execution_contract import (
 from joint_research.research.wallet_flow_contract_audit_receipt import (
     write_wallet_flow_contract_audit_receipt,
 )
+from joint_research.research.wallet_flow_disabled_adapter_interface import (
+    write_wallet_flow_disabled_adapter_interface,
+)
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
@@ -1321,6 +1324,58 @@ def research_wallet_flow_contract_audit_receipt(
     typer.echo("No manifest commands executed.")
     typer.echo(f"contract_audit_receipt={artifacts.receipt_md}")
     typer.echo(f"contract_audit_receipt_json={artifacts.receipt_json}")
+
+
+@research_app.command("wallet-flow-disabled-adapter-interface")
+def research_wallet_flow_disabled_adapter_interface(
+    contract_audit_receipt_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_contract_audit_receipt.json"),
+        "--contract-audit-receipt-json",
+        help="Contract audit receipt JSON path.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_disabled_adapter_interface.md and "
+            "wallet_flow_disabled_adapter_interface.json."
+        ),
+    ),
+) -> None:
+    """Write deterministic hard-disabled wallet-flow adapter interface artifact."""
+
+    artifacts = write_wallet_flow_disabled_adapter_interface(
+        contract_audit_receipt_json=contract_audit_receipt_json.resolve(),
+        output_dir=output_dir.resolve(),
+    )
+    interface = artifacts.interface
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"adapter_status={interface.adapter_status}")
+    typer.echo(f"receipt_status={interface.receipt_status}")
+    typer.echo(f"contract_status={interface.contract_status}")
+    typer.echo(f"ledger_status={interface.ledger_status}")
+    typer.echo(f"decision={interface.decision}")
+    typer.echo(f"adapter_enabled={str(interface.adapter_enabled).lower()}")
+    typer.echo(f"execution_enabled={str(interface.execution_enabled).lower()}")
+    typer.echo(f"network_enabled={str(interface.network_enabled).lower()}")
+    typer.echo(f"ingestion_enabled={str(interface.ingestion_enabled).lower()}")
+    typer.echo(f"shell_enabled={str(interface.shell_enabled).lower()}")
+    typer.echo(f"order_placement_enabled={str(interface.order_placement_enabled).lower()}")
+    typer.echo(f"database_mutation_enabled={str(interface.database_mutation_enabled).lower()}")
+    typer.echo(f"approval_required={str(interface.approval_required).lower()}")
+    typer.echo(f"manual_operator_only={str(interface.manual_operator_only).lower()}")
+    typer.echo(f"no_execution={str(interface.no_execution).lower()}")
+    typer.echo(f"no_ingestion={str(interface.no_ingestion).lower()}")
+    typer.echo(f"no_orders={str(interface.no_orders).lower()}")
+    typer.echo(f"disabled_reason={interface.disabled_reason}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo("No ingestion executed.")
+    typer.echo("No manifest commands executed.")
+    typer.echo(f"disabled_adapter_interface={artifacts.interface_md}")
+    typer.echo(f"disabled_adapter_interface_json={artifacts.interface_json}")
 
 
 @research_app.command("wallet-flow-signal")
