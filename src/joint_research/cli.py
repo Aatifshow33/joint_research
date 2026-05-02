@@ -32,6 +32,9 @@ from joint_research.research.wallet_flow_manifest_audit_index import (
 from joint_research.research.wallet_flow_dry_run_execution_planner import (
     write_wallet_flow_dry_run_execution_plan,
 )
+from joint_research.research.wallet_flow_guarded_operator_handoff import (
+    write_wallet_flow_guarded_operator_handoff,
+)
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
@@ -1058,6 +1061,59 @@ def research_wallet_flow_dry_run_execution_planner(
     typer.echo("No manifest commands executed.")
     typer.echo(f"dry_run_execution_plan={artifacts.plan_md}")
     typer.echo(f"dry_run_execution_plan_json={artifacts.plan_json}")
+
+
+@research_app.command("wallet-flow-guarded-operator-handoff")
+def research_wallet_flow_guarded_operator_handoff(
+    dry_run_plan_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_dry_run_execution_plan.json"),
+        "--dry-run-plan-json",
+        help="Dry-run execution plan JSON path.",
+    ),
+    approved_packet_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_approved_manifest_packet.json"),
+        "--approved-packet-json",
+        help="Approved manifest packet JSON path.",
+    ),
+    audit_index_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_manifest_audit_index.json"),
+        "--audit-index-json",
+        help="Manifest audit index JSON path.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_guarded_operator_handoff.md and "
+            "wallet_flow_guarded_operator_handoff.json."
+        ),
+    ),
+) -> None:
+    """Build deterministic guarded operator handoff for manual approval only."""
+
+    artifacts = write_wallet_flow_guarded_operator_handoff(
+        dry_run_plan_json=dry_run_plan_json.resolve(),
+        approved_packet_json=approved_packet_json.resolve(),
+        audit_index_json=audit_index_json.resolve(),
+        output_dir=output_dir.resolve(),
+    )
+    handoff = artifacts.handoff
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"handoff_status={handoff.handoff_status}")
+    typer.echo(f"plan_status={handoff.plan_status}")
+    typer.echo(f"approved_packet_status={handoff.approved_packet_status}")
+    typer.echo(f"audit_status={handoff.audit_status}")
+    typer.echo(f"approval_required={str(handoff.approval_required).lower()}")
+    typer.echo(f"manual_operator_only={str(handoff.manual_operator_only).lower()}")
+    typer.echo(f"no_execution={str(handoff.no_execution).lower()}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo("No ingestion executed.")
+    typer.echo("No manifest commands executed.")
+    typer.echo(f"guarded_operator_handoff={artifacts.handoff_md}")
+    typer.echo(f"guarded_operator_handoff_json={artifacts.handoff_json}")
 
 
 @research_app.command("wallet-flow-signal")
