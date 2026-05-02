@@ -50,6 +50,9 @@ from joint_research.research.wallet_flow_disabled_adapter_interface import (
 from joint_research.research.wallet_flow_disabled_adapter_run_receipt import (
     write_wallet_flow_disabled_adapter_run_receipt,
 )
+from joint_research.research.wallet_flow_disabled_chain_summary import (
+    write_wallet_flow_disabled_chain_summary,
+)
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
@@ -1432,6 +1435,78 @@ def research_wallet_flow_disabled_adapter_run_receipt(
     typer.echo("No manifest commands executed.")
     typer.echo(f"disabled_adapter_run_receipt={artifacts.receipt_md}")
     typer.echo(f"disabled_adapter_run_receipt_json={artifacts.receipt_json}")
+
+
+@research_app.command("wallet-flow-disabled-chain-summary")
+def research_wallet_flow_disabled_chain_summary(
+    approval_execution_contract_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_approval_execution_contract.json"),
+        "--approval-execution-contract-json",
+        help="Approval execution contract JSON path.",
+    ),
+    contract_audit_receipt_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_contract_audit_receipt.json"),
+        "--contract-audit-receipt-json",
+        help="Contract audit receipt JSON path.",
+    ),
+    disabled_adapter_interface_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_disabled_adapter_interface.json"),
+        "--disabled-adapter-interface-json",
+        help="Disabled adapter interface JSON path.",
+    ),
+    disabled_adapter_run_receipt_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_disabled_adapter_run_receipt.json"),
+        "--disabled-adapter-run-receipt-json",
+        help="Disabled adapter run receipt JSON path.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_disabled_chain_summary.md and "
+            "wallet_flow_disabled_chain_summary.json."
+        ),
+    ),
+) -> None:
+    """Write deterministic end-to-end disabled chain summary (no execution)."""
+
+    artifacts = write_wallet_flow_disabled_chain_summary(
+        approval_execution_contract_json=approval_execution_contract_json.resolve(),
+        contract_audit_receipt_json=contract_audit_receipt_json.resolve(),
+        disabled_adapter_interface_json=disabled_adapter_interface_json.resolve(),
+        disabled_adapter_run_receipt_json=disabled_adapter_run_receipt_json.resolve(),
+        output_dir=output_dir.resolve(),
+    )
+    summary = artifacts.summary
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"chain_status={summary.chain_status}")
+    typer.echo(f"contract_status={summary.contract_status}")
+    typer.echo(f"receipt_status={summary.receipt_status}")
+    typer.echo(f"adapter_status={summary.adapter_status}")
+    typer.echo(f"run_status={summary.run_status}")
+    typer.echo(f"ledger_status={summary.ledger_status}")
+    typer.echo(f"decision={summary.decision}")
+    typer.echo(f"adapter_enabled={str(summary.adapter_enabled).lower()}")
+    typer.echo(f"execution_enabled={str(summary.execution_enabled).lower()}")
+    typer.echo(f"network_enabled={str(summary.network_enabled).lower()}")
+    typer.echo(f"ingestion_enabled={str(summary.ingestion_enabled).lower()}")
+    typer.echo(f"shell_enabled={str(summary.shell_enabled).lower()}")
+    typer.echo(f"order_placement_enabled={str(summary.order_placement_enabled).lower()}")
+    typer.echo(f"database_mutation_enabled={str(summary.database_mutation_enabled).lower()}")
+    typer.echo(f"approval_required={str(summary.approval_required).lower()}")
+    typer.echo(f"manual_operator_only={str(summary.manual_operator_only).lower()}")
+    typer.echo(f"no_execution={str(summary.no_execution).lower()}")
+    typer.echo(f"no_ingestion={str(summary.no_ingestion).lower()}")
+    typer.echo(f"no_orders={str(summary.no_orders).lower()}")
+    typer.echo(f"disabled_reason={summary.disabled_reason}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo("No ingestion executed.")
+    typer.echo("No manifest commands executed.")
+    typer.echo(f"disabled_chain_summary={artifacts.summary_md}")
+    typer.echo(f"disabled_chain_summary_json={artifacts.summary_json}")
 
 
 @research_app.command("wallet-flow-signal")
