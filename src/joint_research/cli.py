@@ -26,6 +26,9 @@ from joint_research.research.wallet_flow_manifest_review_gate import (
 from joint_research.research.wallet_flow_approved_manifest_packet import (
     write_wallet_flow_approved_manifest_packet,
 )
+from joint_research.research.wallet_flow_manifest_audit_index import (
+    write_wallet_flow_manifest_audit_index,
+)
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
@@ -924,6 +927,84 @@ def research_wallet_flow_approved_manifest_packet(
     typer.echo("No ingestion executed.")
     typer.echo(f"approved_manifest_packet={artifacts.packet_md}")
     typer.echo(f"approved_manifest_packet_json={artifacts.packet_json}")
+
+
+@research_app.command("wallet-flow-manifest-audit-index")
+def research_wallet_flow_manifest_audit_index(
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_manifest_audit_index.md and "
+            "wallet_flow_manifest_audit_index.json."
+        ),
+    ),
+    coverage_gate_report: Path = typer.Option(
+        Path("artifacts/research/wallet_flow_signal/wallet_flow_coverage_gate.md"),
+        "--coverage-gate-report",
+        help="Coverage gate markdown report path.",
+    ),
+    priority_report: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_backfill_priority.md"),
+        "--priority-report",
+        help="Backfill priority markdown report path.",
+    ),
+    batch_report: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_backfill_batches.md"),
+        "--batch-report",
+        help="Backfill batches markdown report path.",
+    ),
+    manifest_report: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_backfill_execution_manifest.md"),
+        "--manifest-report",
+        help="Execution manifest markdown report path.",
+    ),
+    review_gate_report: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_manifest_review_gate.md"),
+        "--review-gate-report",
+        help="Manifest review gate markdown report path.",
+    ),
+    approved_packet_report: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_approved_manifest_packet.md"),
+        "--approved-packet-report",
+        help="Approved manifest packet markdown report path.",
+    ),
+    manifest_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_backfill_execution_manifest.json"),
+        "--manifest-json",
+        help="Execution manifest JSON path.",
+    ),
+    approved_packet_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_approved_manifest_packet.json"),
+        "--approved-packet-json",
+        help="Approved manifest packet JSON path.",
+    ),
+) -> None:
+    """Build deterministic wallet-flow manifest audit index (no execution)."""
+
+    artifacts = write_wallet_flow_manifest_audit_index(
+        output_dir=output_dir.resolve(),
+        coverage_gate_report=coverage_gate_report.resolve(),
+        priority_report=priority_report.resolve(),
+        batch_report=batch_report.resolve(),
+        manifest_report=manifest_report.resolve(),
+        review_gate_report=review_gate_report.resolve(),
+        approved_packet_report=approved_packet_report.resolve(),
+        manifest_json=manifest_json.resolve(),
+        approved_packet_json=approved_packet_json.resolve(),
+    )
+    index = artifacts.index
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"audit_status={index.audit_status}")
+    typer.echo(f"reports_found={index.reports_found}")
+    typer.echo(f"reports_missing={index.reports_missing}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo("No ingestion executed.")
+    typer.echo(f"audit_index={artifacts.audit_index_md}")
+    typer.echo(f"audit_index_json={artifacts.audit_index_json}")
 
 
 @research_app.command("wallet-flow-signal")
