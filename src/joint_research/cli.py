@@ -35,6 +35,9 @@ from joint_research.research.wallet_flow_dry_run_execution_planner import (
 from joint_research.research.wallet_flow_guarded_operator_handoff import (
     write_wallet_flow_guarded_operator_handoff,
 )
+from joint_research.research.wallet_flow_operator_approval_ledger import (
+    write_wallet_flow_operator_approval_ledger,
+)
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
@@ -1114,6 +1117,70 @@ def research_wallet_flow_guarded_operator_handoff(
     typer.echo("No manifest commands executed.")
     typer.echo(f"guarded_operator_handoff={artifacts.handoff_md}")
     typer.echo(f"guarded_operator_handoff_json={artifacts.handoff_json}")
+
+
+@research_app.command("wallet-flow-operator-approval-ledger")
+def research_wallet_flow_operator_approval_ledger(
+    guarded_handoff_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_guarded_operator_handoff.json"),
+        "--guarded-handoff-json",
+        help="Guarded operator handoff JSON path.",
+    ),
+    decision: str = typer.Option(
+        "pending",
+        "--decision",
+        help="Manual review decision: pending|approve|reject.",
+    ),
+    reviewer: str = typer.Option(
+        "",
+        "--reviewer",
+        help="Optional reviewer identifier.",
+    ),
+    review_note: str = typer.Option(
+        "",
+        "--review-note",
+        help="Optional review note.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_operator_approval_ledger.md and "
+            "wallet_flow_operator_approval_ledger.json."
+        ),
+    ),
+) -> None:
+    """Write a deterministic operator approval ledger (no execution)."""
+
+    normalized_decision = decision.strip().lower()
+    if normalized_decision not in {"pending", "approve", "reject"}:
+        raise typer.BadParameter(
+            "Invalid value for --decision. Expected one of: pending, approve, reject."
+        )
+
+    artifacts = write_wallet_flow_operator_approval_ledger(
+        guarded_handoff_json=guarded_handoff_json.resolve(),
+        decision=normalized_decision,
+        reviewer=reviewer,
+        review_note=review_note,
+        output_dir=output_dir.resolve(),
+    )
+    ledger = artifacts.ledger
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"ledger_status={ledger.ledger_status}")
+    typer.echo(f"decision={ledger.decision}")
+    typer.echo(f"handoff_status={ledger.handoff_status}")
+    typer.echo(f"approval_required={str(ledger.approval_required).lower()}")
+    typer.echo(f"manual_operator_only={str(ledger.manual_operator_only).lower()}")
+    typer.echo(f"no_execution={str(ledger.no_execution).lower()}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo("No ingestion executed.")
+    typer.echo("No manifest commands executed.")
+    typer.echo(f"operator_approval_ledger={artifacts.ledger_md}")
+    typer.echo(f"operator_approval_ledger_json={artifacts.ledger_json}")
 
 
 @research_app.command("wallet-flow-signal")
