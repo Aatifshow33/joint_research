@@ -29,6 +29,9 @@ from joint_research.research.wallet_flow_approved_manifest_packet import (
 from joint_research.research.wallet_flow_manifest_audit_index import (
     write_wallet_flow_manifest_audit_index,
 )
+from joint_research.research.wallet_flow_dry_run_execution_planner import (
+    write_wallet_flow_dry_run_execution_plan,
+)
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
@@ -1005,6 +1008,56 @@ def research_wallet_flow_manifest_audit_index(
     typer.echo("No ingestion executed.")
     typer.echo(f"audit_index={artifacts.audit_index_md}")
     typer.echo(f"audit_index_json={artifacts.audit_index_json}")
+
+
+@research_app.command("wallet-flow-dry-run-execution-planner")
+def research_wallet_flow_dry_run_execution_planner(
+    manifest_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_backfill_execution_manifest.json"),
+        "--manifest-json",
+        help="Execution manifest JSON path.",
+    ),
+    approved_packet_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_approved_manifest_packet.json"),
+        "--approved-packet-json",
+        help="Approved manifest packet JSON path.",
+    ),
+    audit_index_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_manifest_audit_index.json"),
+        "--audit-index-json",
+        help="Manifest audit index JSON path.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_dry_run_execution_plan.md and "
+            "wallet_flow_dry_run_execution_plan.json."
+        ),
+    ),
+) -> None:
+    """Build deterministic preview-only dry-run execution plan (no execution)."""
+
+    artifacts = write_wallet_flow_dry_run_execution_plan(
+        manifest_json=manifest_json.resolve(),
+        approved_packet_json=approved_packet_json.resolve(),
+        audit_index_json=audit_index_json.resolve(),
+        output_dir=output_dir.resolve(),
+    )
+    plan = artifacts.plan
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"plan_status={plan.plan_status}")
+    typer.echo(f"manifest_rows={plan.manifest_rows}")
+    typer.echo(f"approved_packet_status={plan.approved_packet_status}")
+    typer.echo(f"audit_status={plan.audit_status}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo("No ingestion executed.")
+    typer.echo("No manifest commands executed.")
+    typer.echo(f"dry_run_execution_plan={artifacts.plan_md}")
+    typer.echo(f"dry_run_execution_plan_json={artifacts.plan_json}")
 
 
 @research_app.command("wallet-flow-signal")
