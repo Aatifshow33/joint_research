@@ -53,6 +53,9 @@ from joint_research.research.wallet_flow_disabled_adapter_run_receipt import (
 from joint_research.research.wallet_flow_disabled_chain_summary import (
     write_wallet_flow_disabled_chain_summary,
 )
+from joint_research.research.wallet_flow_disabled_policy_guard import (
+    write_wallet_flow_disabled_policy_guard,
+)
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
@@ -1507,6 +1510,61 @@ def research_wallet_flow_disabled_chain_summary(
     typer.echo("No manifest commands executed.")
     typer.echo(f"disabled_chain_summary={artifacts.summary_md}")
     typer.echo(f"disabled_chain_summary_json={artifacts.summary_json}")
+
+
+@research_app.command("wallet-flow-disabled-policy-guard")
+def research_wallet_flow_disabled_policy_guard(
+    disabled_chain_summary_json: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan/wallet_flow_disabled_chain_summary.json"),
+        "--disabled-chain-summary-json",
+        help="Disabled chain summary JSON path.",
+    ),
+    output_dir: Path = typer.Option(
+        Path("artifacts/ingest/wallet_flow_backfill_plan"),
+        "--output-dir",
+        "--out-path",
+        help=(
+            "Directory for wallet_flow_disabled_policy_guard.md and "
+            "wallet_flow_disabled_policy_guard.json."
+        ),
+    ),
+) -> None:
+    """Write deterministic disabled policy regression guard (no execution)."""
+
+    artifacts = write_wallet_flow_disabled_policy_guard(
+        disabled_chain_summary_json=disabled_chain_summary_json.resolve(),
+        output_dir=output_dir.resolve(),
+    )
+    guard = artifacts.guard
+    typer.echo("EXPLORATORY ONLY - NOT TRADEABLE")
+    typer.echo(f"guard_status={guard.guard_status}")
+    typer.echo(f"chain_status={guard.chain_status}")
+    typer.echo(f"contract_status={guard.contract_status}")
+    typer.echo(f"receipt_status={guard.receipt_status}")
+    typer.echo(f"adapter_status={guard.adapter_status}")
+    typer.echo(f"run_status={guard.run_status}")
+    typer.echo(f"ledger_status={guard.ledger_status}")
+    typer.echo(f"decision={guard.decision}")
+    typer.echo(f"adapter_enabled={str(guard.adapter_enabled).lower()}")
+    typer.echo(f"execution_enabled={str(guard.execution_enabled).lower()}")
+    typer.echo(f"network_enabled={str(guard.network_enabled).lower()}")
+    typer.echo(f"ingestion_enabled={str(guard.ingestion_enabled).lower()}")
+    typer.echo(f"shell_enabled={str(guard.shell_enabled).lower()}")
+    typer.echo(f"order_placement_enabled={str(guard.order_placement_enabled).lower()}")
+    typer.echo(f"database_mutation_enabled={str(guard.database_mutation_enabled).lower()}")
+    typer.echo(f"approval_required={str(guard.approval_required).lower()}")
+    typer.echo(f"manual_operator_only={str(guard.manual_operator_only).lower()}")
+    typer.echo(f"no_execution={str(guard.no_execution).lower()}")
+    typer.echo(f"no_ingestion={str(guard.no_ingestion).lower()}")
+    typer.echo(f"no_orders={str(guard.no_orders).lower()}")
+    typer.echo(f"disabled_reason={guard.disabled_reason}")
+    typer.echo("No candidates promoted.")
+    typer.echo("No threshold changes.")
+    typer.echo("No live trading changes.")
+    typer.echo("No ingestion executed.")
+    typer.echo("No manifest commands executed.")
+    typer.echo(f"disabled_policy_guard={artifacts.guard_md}")
+    typer.echo(f"disabled_policy_guard_json={artifacts.guard_json}")
 
 
 @research_app.command("wallet-flow-signal")
