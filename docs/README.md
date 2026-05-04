@@ -14,6 +14,8 @@ Supporting docs:
 - docs/wallet_flow_disabled_chain_audit_pack.md
 - docs/wallet_flow_disabled_chain_codespaces_note.md
 
+Phase 4.49 schema contract: `src/joint_research/wallet_flow_coverage_schema_contract.py` (static documentation/supporting code only, `CoverageArtifactSchema`, `COVERAGE_ARTIFACT_SCHEMAS`). See `docs/wallet_flow_static_coverage_schema_validation_tests.md` and `docs/wallet_flow_static_coverage_diagnostic_artifact_spec.md`. Does not write artifacts, run ingestion, rerun research, promote candidates, or make wallet-flow tradeable. **EXPLORATORY ONLY - NOT TRADEABLE**
+
 `POLICY_GUARD_PASS` means disabled-policy validation only, not approval to trade.
 
 This root pointer does not approve ingestion.

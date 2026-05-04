@@ -59,4 +59,18 @@ def test_docs_readme_wallet_flow_disabled_pointer_content() -> None:
         "it does not make wallet-flow tradeable."
     ) in text
 
+    # Phase 4.49 schema contract pointer assertions
+    assert "src/joint_research/wallet_flow_coverage_schema_contract.py" in text
+    assert "docs/wallet_flow_static_coverage_schema_validation_tests.md" in text
+    assert "docs/wallet_flow_static_coverage_diagnostic_artifact_spec.md" in text
+    assert "CoverageArtifactSchema" in text
+    assert "COVERAGE_ARTIFACT_SCHEMAS" in text
+    assert "static documentation/supporting code only" in text
+    assert "Does not write artifacts" in text
+    assert "run ingestion" in text
+    assert "rerun research" in text
+    assert "promote candidates" in text
+    assert "make wallet-flow tradeable" in text
+    assert "EXPLORATORY ONLY - NOT TRADEABLE" in text  # Ensure it's present in the new section
+
     assert "live trading is enabled" not in lower_text
