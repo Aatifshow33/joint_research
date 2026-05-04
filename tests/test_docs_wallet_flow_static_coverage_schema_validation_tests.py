@@ -239,6 +239,129 @@ def test_doc_contains_final_safety_statement():
     assert "This static coverage schema validation test plan defines local-only validation expectations for future diagnostic schemas; it does not make wallet-flow tradeable" in text
 
 
+def test_doc_contains_phase_4_49_schema_contract_section():
+    """Verify doc contains Phase 4.49 schema contract module section."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "## Phase 4.49 schema contract module" in text
+
+
+def test_doc_mentions_schema_contract_module_path():
+    """Verify doc mentions the schema contract module path."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "src/joint_research/wallet_flow_coverage_schema_contract.py" in text
+
+
+def test_doc_mentions_schema_contract_test_path():
+    """Verify doc mentions the schema contract test path."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "tests/test_wallet_flow_coverage_schema_contract.py" in text
+
+
+def test_doc_mentions_coverage_artifact_schema():
+    """Verify doc mentions CoverageArtifactSchema."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "CoverageArtifactSchema" in text
+
+
+def test_doc_mentions_coverage_artifact_schemas():
+    """Verify doc mentions COVERAGE_ARTIFACT_SCHEMAS."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "COVERAGE_ARTIFACT_SCHEMAS" in text
+
+
+def test_doc_mentions_get_coverage_artifact_schema():
+    """Verify doc mentions get_coverage_artifact_schema."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "get_coverage_artifact_schema" in text
+
+
+def test_doc_mentions_list_coverage_artifact_names():
+    """Verify doc mentions list_coverage_artifact_names."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "list_coverage_artifact_names" in text
+
+
+def test_doc_states_static_schema_contracts_only():
+    """Verify doc states the module provides static schema contracts only."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "provides static schema contracts only" in text
+
+
+def test_doc_states_no_artifact_writing():
+    """Verify doc states the module does not write artifacts."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "does not write artifacts" in text
+
+
+def test_doc_states_no_diagnostic_generation():
+    """Verify doc states the module does not generate diagnostic CSV or markdown files."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "does not generate diagnostic CSV or markdown files" in text
+
+
+def test_doc_states_no_ingestion():
+    """Verify doc states the module does not run ingestion."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "does not run ingestion" in text
+
+
+def test_doc_states_no_research_rerun():
+    """Verify doc states the module does not rerun research."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "does not rerun research" in text
+
+
+def test_doc_states_no_execution_approval():
+    """Verify doc states the module does not approve execution."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "does not approve execution" in text
+
+
+def test_doc_states_no_candidate_promotion():
+    """Verify doc states the module does not promote candidates."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "does not promote candidates" in text
+
+
+def test_doc_states_no_tradeability_claim():
+    """Verify doc states the module does not make wallet-flow tradeable."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    assert "does not make wallet-flow tradeable" in text
+
+
+def test_doc_retains_exploratory_only_in_new_section():
+    """Verify the new section retains EXPLORATORY ONLY - NOT TRADEABLE."""
+    with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:
+        text = f.read()
+    # Find the section
+    lines = text.split('\n')
+    in_section = False
+    for line in lines:
+        if "## Phase 4.49 schema contract module" in line:
+            in_section = True
+        elif in_section and line.startswith("## "):
+            break
+        elif in_section:
+            if "EXPLORATORY ONLY - NOT TRADEABLE" in line:
+                return
+    assert False, "EXPLORATORY ONLY - NOT TRADEABLE not found in Phase 4.49 section"
+
+
 def test_doc_does_not_claim_live_trading_enabled():
     """Verify doc does not claim live trading is enabled."""
     with open("/workspaces/joint_research/docs/wallet_flow_static_coverage_schema_validation_tests.md") as f:

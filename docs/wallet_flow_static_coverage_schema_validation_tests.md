@@ -136,6 +136,14 @@ When applying this phase:
 - [ ] Confirm no ingestion, execution, adapters, manifests, orders, or database mutation are approved.
 - [ ] Confirm this phase defines validation expectations only and does not create artifacts.
 
+## Phase 4.49 schema contract module
+
+Phase 4.49 added the schema contract module at `src/joint_research/wallet_flow_coverage_schema_contract.py` with tests at `tests/test_wallet_flow_coverage_schema_contract.py`. This module provides static schema contracts only, including `CoverageArtifactSchema`, `COVERAGE_ARTIFACT_SCHEMAS`, `get_coverage_artifact_schema`, and `list_coverage_artifact_names`.
+
+The module does not write artifacts. It does not generate diagnostic CSV or markdown files. It does not run ingestion. It does not rerun research. It does not approve execution. It does not promote candidates. It does not make wallet-flow tradeable.
+
+**Status:** EXPLORATORY ONLY - NOT TRADEABLE
+
 ---
 
 **This static coverage schema validation test plan defines local-only validation expectations for future diagnostic schemas; it does not make wallet-flow tradeable.**
