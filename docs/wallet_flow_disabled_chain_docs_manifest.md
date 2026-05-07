@@ -62,6 +62,14 @@ Use when: Verifying the final schema contract closeout note and the frozen point
 
 Safety note: The Phase 4.52 schema contract closeout note freezes the Phase 4.49-4.51 schema-contract pointer chain around `src/joint_research/wallet_flow_coverage_schema_contract.py`, `CoverageArtifactSchema`, and `COVERAGE_ARTIFACT_SCHEMAS`. It remains EXPLORATORY ONLY - NOT TRADEABLE and does not write artifacts, run ingestion, rerun research, execute manifests, mutate databases, promote candidates, promote wallets, approve paper trading, approve live trading, or make wallet-flow tradeable.
 
+### tests/test_wallet_flow_artifact_closeout_guard.py
+
+Purpose: Phase 4.55 static regression guard for the Phase 4.54 wallet-flow artifact conclusion.
+
+Use when: Verifying wallet-flow remains EXPLORATORY ONLY - NOT TRADEABLE with `SIMULATION_READY: 0`, `WATCHLIST: 0`, `WEAK: 0`, and `REJECTED: 1082`, while the rejection diagnostics/summary artifacts exist and continue to reference the main blockers.
+
+Safety note: This static regression test is read-only and prevents accidental promotion of wallet-flow; it does not run ingestion, enable paper/live trading, or make wallet-flow tradeable.
+
 ## Required read order
 
 1. docs/wallet_flow_disabled_chain_index.md
@@ -70,6 +78,7 @@ Safety note: The Phase 4.52 schema contract closeout note freezes the Phase 4.49
 4. docs/wallet_flow_disabled_chain_audit_pack.md
 5. docs/wallet_flow_disabled_chain_codespaces_note.md
 6. docs/wallet_flow_schema_contract_closeout_note.md
+7. tests/test_wallet_flow_artifact_closeout_guard.py
 
 ## Expected safe statuses
 
