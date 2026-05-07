@@ -70,6 +70,14 @@ Use when: Verifying wallet-flow remains EXPLORATORY ONLY - NOT TRADEABLE with `S
 
 Safety note: This static regression test is read-only and prevents accidental promotion of wallet-flow; it does not run ingestion, enable paper/live trading, or make wallet-flow tradeable.
 
+## Phase 4.57 closeout note
+
+- Phase 4.55 added `tests/test_wallet_flow_artifact_closeout_guard.py` as a read-only static regression guard.
+- Phase 4.56 linked that guard into this disabled-chain docs manifest.
+- The protected conclusion remains EXPLORATORY ONLY - NOT TRADEABLE.
+- The guard prevents accidental promotion of wallet-flow from artifact drift.
+- This guard chain does not authorize ingestion, paper trading, live trading, threshold loosening, or wallet-flow candidate promotion.
+
 ## Required read order
 
 1. docs/wallet_flow_disabled_chain_index.md
