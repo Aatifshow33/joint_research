@@ -9,6 +9,8 @@ Primary manifest pointer: docs/wallet_flow_disabled_chain_docs_manifest.md
 
 Wallet-flow artifact guard pointer: Phase 4.55 added the read-only static regression guard `tests/test_wallet_flow_artifact_closeout_guard.py`, and Phase 4.56/4.57 anchored its closeout chain in `docs/wallet_flow_disabled_chain_docs_manifest.md`. Wallet-flow remains EXPLORATORY ONLY - NOT TRADEABLE, and this guard protects against accidental promotion from artifact drift. This pointer does not authorize ingestion, paper trading, live trading, threshold loosening, or candidate promotion.
 
+Derivatives-regime triage guard pointer: With wallet-flow closed as EXPLORATORY ONLY - NOT TRADEABLE, derivatives-regime is the next research lane. Phase 4.60 added the read-only static triage guard `tests/test_derivatives_regime_artifact_triage_guard.py`, which checks committed derivatives-regime artifacts and counts/reviews grades without promoting candidates. This guard does not authorize ingestion, artifact refresh, paper trading, live trading, threshold loosening, or candidate promotion.
+
 Supporting docs:
 - docs/wallet_flow_disabled_chain_index.md
 - docs/wallet_flow_disabled_chain_operator_readme.md
