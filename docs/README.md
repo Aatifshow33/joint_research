@@ -11,6 +11,8 @@ Wallet-flow artifact guard pointer: Phase 4.55 added the read-only static regres
 
 Derivatives-regime triage guard pointer: With wallet-flow closed as EXPLORATORY ONLY - NOT TRADEABLE, derivatives-regime is the next research lane. Phase 4.60 added the read-only static triage guard `tests/test_derivatives_regime_artifact_triage_guard.py`, which checks committed derivatives-regime artifacts and counts/reviews grades without promoting candidates. This guard does not authorize ingestion, artifact refresh, paper trading, live trading, threshold loosening, or candidate promotion.
 
+Phase 4.62 closeout note: Phase 4.60 added the read-only static triage guard, and Phase 4.61 linked it from `docs/README.md`. Derivatives-regime is the active next research lane after wallet-flow was closed exploratory-only. The guard checks committed derivatives-regime artifacts and reviews/counts grades without promotion. This closeout chain does not authorize ingestion, artifact refresh, paper trading, live trading, threshold loosening, or candidate promotion.
+
 Supporting docs:
 - docs/wallet_flow_disabled_chain_index.md
 - docs/wallet_flow_disabled_chain_operator_readme.md
