@@ -17,6 +17,8 @@ Derivatives-regime evidence plan pointer: Phase 4.64 added `docs/derivatives_reg
 
 Derivatives-regime diagnostics spec pointer: Phase 4.66 added `docs/derivatives_regime_diagnostics_spec.md` as a docs-only, non-executing specification for a future read-only diagnostics implementation. It follows the Phase 4.64 evidence-strengthening plan and defines diagnostics coverage plus schema contracts for future outputs. This spec does not authorize ingestion, artifact refresh, rerunning research, paper trading, live trading, threshold loosening, or candidate promotion.
 
+Phase 4.68 closeout note: Phase 4.66 added the diagnostics spec, and Phase 4.67 linked it from `docs/README.md`. This chain is docs-only and non-executing, and it prepares future read-only diagnostics only. It does not authorize ingestion, artifact refresh, rerunning research, paper trading, live trading, threshold loosening, or candidate promotion.
+
 Supporting docs:
 - docs/wallet_flow_disabled_chain_index.md
 - docs/wallet_flow_disabled_chain_operator_readme.md
