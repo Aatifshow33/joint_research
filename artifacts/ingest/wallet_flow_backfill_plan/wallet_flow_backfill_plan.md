@@ -10,41 +10,47 @@
 
 ## Coverage Snapshot
 
-- markets_total: 728
-- markets_with_wallet_flow: 42
-- wallet_flow_rows: 1001
-- trade_rows: 992
-- copy_rows: 9
-- market_flow_hourly_rows: 397
-- whale_flow_hourly_rows: 392
+- markets_total: 1952
+- markets_with_wallet_flow: 132
+- wallet_flow_rows: 25052
+- trade_rows: 24823
+- copy_rows: 229
+- market_flow_hourly_rows: 3075
+- whale_flow_hourly_rows: 2894
+
+## Coverage Quality Focus
+
+- Prioritize continuity gain: markets where additional backfill can repair missing hourly gaps.
+- Keep breadth/depth expansion, but deprioritize stale high-row markets with weak marginal continuity gain.
+- Still exploratory only, not tradeable.
 
 ## Staged Plan
 
-- `stage_1_quick`: BTC/ETH-first quick coverage
-- `stage_2_depth`: deeper all-asset backfill
-- `stage_3_breadth`: broadest market coverage
+- `stage_1_quick`: BTC/ETH-first continuity + depth repair
+- `stage_2_depth`: all-asset continuity repair and depth expansion
+- `stage_3_breadth`: broad coverage expansion after continuity/depth priorities
 
 ## Top Selected Stage Markets
 
-| Rank | Asset | Market | 1mo Vol | Wallet Rows | Flow Hours | Reason |
-| ---: | --- | --- | ---: | ---: | ---: | --- |
-| 1 | BTC | will-bitcoin-reach-150k-in-april-2026 | 7997586.10 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 2 | BTC | will-bitcoin-reach-130000-by-december-31-2026-756-151-855 | 202363.70 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 3 | BTC | will-bitcoin-reach-150000-by-december-31-2026-557-246-971 | 118008.26 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 4 | BTC | will-bitcoin-reach-140000-by-december-31-2026-131-829-299 | 75533.53 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 5 | BTC | will-bitcoin-dip-to-25000-by-december-31-2026-948-243-253-666-115-787-981-282-573-719-186-417-762-754-486-851-278-145 | 164712.26 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 6 | BTC | will-bitcoin-reach-80k-on-april-27 | 60710.86 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 7 | BTC | bitcoin-above-86k-on-april-28 | 57706.85 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 8 | BTC | bitcoin-above-74k-on-april-29 | 55553.97 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 9 | BTC | will-the-price-of-bitcoin-be-between-66000-68000-on-april-28 | 55466.43 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 10 | BTC | bitcoin-above-88k-on-april-29 | 53494.58 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 11 | BTC | will-march-be-the-best-month-for-bitcoin-in-2026 | 43243.94 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 12 | BTC | will-the-price-of-bitcoin-be-greater-than-88000-on-april-29 | 9902.06 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 13 | BTC | bitcoin-above-70k-on-may-1 | 9727.57 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 14 | BTC | bitcoin-above-70k-on-april-30 | 9521.13 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 15 | BTC | will-the-price-of-bitcoin-be-between-76000-78000-on-april-28 | 9333.08 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 16 | BTC | will-the-bitcoin-volatility-index-hit-70-by-april-30 | 8109.92 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 17 | BTC | bitcoin-above-88k-on-april-30 | 8971.74 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 18 | BTC | will-the-bitcoin-volatility-index-hit-80-by-april-30 | 6896.51 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 19 | BTC | bitcoin-above-70k-on-may-3 | 8430.91 | 0 | 0 | priority_asset,active,undercovered,volume |
-| 20 | BTC | bitcoin-above-76k-on-april-29 | 8336.77 | 0 | 0 | priority_asset,active,undercovered,volume |
+| Rank | Asset | Market | 1mo Vol | Need | Obs Hours | Span Hrs | Continuity | Missing Hrs | Recent | Reason |
+| ---: | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | --- | --- |
+| 1 | BTC | will-bitcoin-reach-82500-in-april | 889805.44 | continuity_repair | 98 | 194 | 0.50 | 97 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 2 | BTC | bitcoin-above-76k-on-april-28 | 75436.75 | continuity_repair | 41 | 85 | 0.48 | 45 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 3 | BTC | will-bitcoin-dip-to-70000-in-april-118-383 | 965628.05 | continuity_repair | 107 | 228 | 0.47 | 122 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 4 | BTC | bitcoin-above-78k-on-april-28 | 69470.85 | continuity_repair | 38 | 86 | 0.44 | 49 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 5 | BTC | bitcoin-above-74k-on-april-29 | 522157.39 | continuity_repair | 37 | 87 | 0.42 | 51 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 6 | BTC | bitcoin-above-72k-on-april-30 | 601809.71 | continuity_repair | 36 | 85 | 0.42 | 50 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 7 | BTC | bitcoin-above-78k-on-april-29 | 84844.01 | continuity_repair | 49 | 127 | 0.38 | 79 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 8 | BTC | bitcoin-above-74k-on-april-30 | 68449.50 | continuity_repair | 27 | 71 | 0.38 | 45 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 9 | BTC | will-bitcoin-dip-to-70k-in-may-2026 | 93604.43 | continuity_repair | 29 | 77 | 0.37 | 49 | yes | priority_asset,active,undercovered,need:continuity_repair,recent,gap_repair,volume |
+| 10 | BTC | will-bitcoin-dip-to-74k-april-27-may-3 | 92717.76 | continuity_repair | 55 | 147 | 0.37 | 93 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 11 | BTC | bitcoin-above-72k-on-april-28 | 94728.69 | continuity_repair | 32 | 87 | 0.36 | 56 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 12 | BTC | will-bitcoin-reach-82k-april-27-may-3 | 96439.60 | continuity_repair | 61 | 169 | 0.36 | 109 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 13 | BTC | bitcoin-above-76k-on-may-1 | 96988.50 | continuity_repair | 29 | 82 | 0.35 | 54 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 14 | BTC | bitcoin-above-80k-on-april-28 | 69232.63 | continuity_repair | 27 | 77 | 0.35 | 51 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 15 | BTC | bitcoin-above-78k-on-may-1 | 96814.12 | continuity_repair | 26 | 75 | 0.34 | 50 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 16 | BTC | will-bitcoin-dip-to-75000-in-april | 774913.77 | continuity_repair | 79 | 263 | 0.30 | 185 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 17 | BTC | will-bitcoin-dip-to-72k-april-27-may-3 | 84609.66 | continuity_repair | 30 | 118 | 0.25 | 89 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 18 | BTC | will-bitcoin-dip-to-70k-april-27-may-3 | 90620.92 | continuity_repair | 32 | 146 | 0.22 | 115 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
+| 19 | BTC | will-bitcoin-reach-80k-in-april-2026-794 | 8689572.23 | continuity_repair | 134 | 782 | 0.17 | 649 | yes | priority_asset,active,undercovered,need:continuity_repair,recent,gap_repair,volume |
+| 20 | BTC | bitcoin-above-72k-on-may-1 | 90032.08 | continuity_repair | 27 | 162 | 0.17 | 136 | no | priority_asset,active,undercovered,need:continuity_repair,stale,gap_repair,volume |
