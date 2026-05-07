@@ -30,6 +30,7 @@ def test_wallet_flow_disabled_chain_docs_manifest_content() -> None:
         "docs/wallet_flow_disabled_chain_index.md",
         "docs/wallet_flow_disabled_chain_audit_pack.md",
         "docs/wallet_flow_disabled_chain_codespaces_note.md",
+        "docs/wallet_flow_schema_contract_closeout_note.md",
     ]
     for doc in required_docs:
         assert doc in text
@@ -41,6 +42,25 @@ def test_wallet_flow_disabled_chain_docs_manifest_content() -> None:
     assert "3. docs/wallet_flow_disabled_chain_release_notes.md" in text
     assert "4. docs/wallet_flow_disabled_chain_audit_pack.md" in text
     assert "5. docs/wallet_flow_disabled_chain_codespaces_note.md" in text
+    assert "6. docs/wallet_flow_schema_contract_closeout_note.md" in text
+
+    # Phase 4.52 closeout pointer chain coverage
+    closeout_required_strings = [
+        "Phase 4.52",
+        "schema contract closeout note",
+        "Phase 4.49",
+        "Phase 4.50",
+        "Phase 4.51",
+        "src/joint_research/wallet_flow_coverage_schema_contract.py",
+        "CoverageArtifactSchema",
+        "COVERAGE_ARTIFACT_SCHEMAS",
+        "EXPLORATORY ONLY - NOT TRADEABLE",
+    ]
+    for required in closeout_required_strings:
+        if required == "schema contract closeout note":
+            assert required in lower_text
+        else:
+            assert required in text
 
     # Expected safe statuses
     required_statuses = [
@@ -69,6 +89,22 @@ def test_wallet_flow_disabled_chain_docs_manifest_content() -> None:
     ]
     for boundary in manifest_boundaries:
         assert boundary in text
+
+    # Additional non-executing and non-promotion boundaries
+    non_execution_boundaries = [
+        "does not write artifacts",
+        "does not run ingestion",
+        "does not rerun research",
+        "does not execute manifests",
+        "does not mutate databases",
+        "does not promote candidates",
+        "does not promote wallets",
+        "does not approve paper trading",
+        "does not approve live trading",
+        "does not make wallet-flow tradeable",
+    ]
+    for boundary in non_execution_boundaries:
+        assert boundary in lower_text
 
     # Codespaces hygiene lines
     codespaces_hygiene_lines = [
