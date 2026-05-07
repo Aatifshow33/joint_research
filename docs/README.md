@@ -21,6 +21,8 @@ Phase 4.68 closeout note: Phase 4.66 added the diagnostics spec, and Phase 4.67 
 
 Derivatives-regime diagnostics implementation plan pointer: Phase 4.69 added `docs/derivatives_regime_diagnostics_implementation_plan.md` as a docs-only/planning-only step. It follows the Phase 4.66 diagnostics spec and Phase 4.68 closeout, and prepares a future read-only implementation only. It does not authorize ingestion, artifact refresh, rerunning research, diagnostics artifact creation in this phase, paper/live trading, threshold loosening, or candidate promotion.
 
+Phase 4.71 closeout note: Phase 4.69 added the diagnostics implementation plan, and Phase 4.70 linked it from `docs/README.md`. This chain is docs-only/planning-only and prepares future read-only diagnostics implementation only. It does not authorize ingestion, artifact refresh, rerunning research, diagnostics artifact creation in this phase, paper trading, live trading, threshold loosening, or candidate promotion.
+
 Supporting docs:
 - docs/wallet_flow_disabled_chain_index.md
 - docs/wallet_flow_disabled_chain_operator_readme.md
