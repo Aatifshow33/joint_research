@@ -15,6 +15,8 @@ Phase 4.62 closeout note: Phase 4.60 added the read-only static triage guard, an
 
 Derivatives-regime evidence plan pointer: Phase 4.64 added `docs/derivatives_regime_evidence_strengthening_plan.md` as a docs-only, diagnostics-only follow-on to the Phase 4.63 artifact review. This plan targets sample sufficiency gaps, train/test direction mismatch, and insufficient strength/stability for promotion. It does not authorize ingestion, artifact refresh, paper trading, live trading, threshold loosening, or candidate promotion.
 
+Derivatives-regime diagnostics spec pointer: Phase 4.66 added `docs/derivatives_regime_diagnostics_spec.md` as a docs-only, non-executing specification for a future read-only diagnostics implementation. It follows the Phase 4.64 evidence-strengthening plan and defines diagnostics coverage plus schema contracts for future outputs. This spec does not authorize ingestion, artifact refresh, rerunning research, paper trading, live trading, threshold loosening, or candidate promotion.
+
 Supporting docs:
 - docs/wallet_flow_disabled_chain_index.md
 - docs/wallet_flow_disabled_chain_operator_readme.md
