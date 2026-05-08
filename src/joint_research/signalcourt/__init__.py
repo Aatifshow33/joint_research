@@ -37,6 +37,13 @@ from joint_research.signalcourt.readiness import (
     build_wallet_flow_readiness,
     readiness_allows_trade_decision,
 )
+from joint_research.signalcourt.risk_gate import (
+    RiskConfig,
+    RiskGateResult,
+    default_tiny_account_risk_config,
+    evaluate_risk_gate,
+    risk_gate_allows_order,
+)
 from joint_research.signalcourt.verdict import (
     ResearchCourtVerdict,
     build_derivatives_regime_verdict,
@@ -54,6 +61,8 @@ __all__ = [
     "SignalPassport",
     "SignalReadiness",
     "ResearchCourtVerdict",
+    "RiskConfig",
+    "RiskGateResult",
     "WalletFlowReadinessPaths",
     "build_derivatives_regime_passport",
     "build_derivatives_regime_readiness",
@@ -63,6 +72,8 @@ __all__ = [
     "build_paper_decision_result",
     "build_wallet_flow_verdict",
     "build_trade_decision",
+    "evaluate_risk_gate",
+    "default_tiny_account_risk_config",
     "build_wallet_flow_passport",
     "build_wallet_flow_readiness",
     "passport_allows_trade_decision",
@@ -71,6 +82,7 @@ __all__ = [
     "governance_review",
     "decision_allows_execution",
     "paper_decision_allows_order",
+    "risk_gate_allows_order",
     "PAPER_ACTION_NO_TRADE",
     "PAPER_ACTION_WATCH_ONLY",
     "PAPER_ACTION_ENTER",
