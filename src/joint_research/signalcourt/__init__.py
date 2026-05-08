@@ -34,6 +34,12 @@ from joint_research.signalcourt.paper_journal import (
     build_paper_journal_entry,
     journal_entry_allows_order,
 )
+from joint_research.signalcourt.pipeline import (
+    SignalCourtPipelineResult,
+    build_derivatives_regime_pipeline,
+    build_wallet_flow_pipeline,
+    pipeline_allows_order,
+)
 from joint_research.signalcourt.readiness import (
     DerivativesRegimeReadinessPaths,
     SignalReadiness,
@@ -63,6 +69,7 @@ __all__ = [
     "DerivativesRegimeReadinessPaths",
     "PaperDecisionResult",
     "PaperJournalEntry",
+    "SignalCourtPipelineResult",
     "TradeDecision",
     "SignalPassport",
     "SignalReadiness",
@@ -75,8 +82,10 @@ __all__ = [
     "build_signal_passport",
     "build_research_court_verdict",
     "build_derivatives_regime_verdict",
+    "build_derivatives_regime_pipeline",
     "build_paper_decision_result",
     "build_paper_journal_entry",
+    "build_wallet_flow_pipeline",
     "build_wallet_flow_verdict",
     "build_trade_decision",
     "evaluate_risk_gate",
@@ -90,6 +99,7 @@ __all__ = [
     "decision_allows_execution",
     "paper_decision_allows_order",
     "journal_entry_allows_order",
+    "pipeline_allows_order",
     "risk_gate_allows_order",
     "PAPER_ACTION_NO_TRADE",
     "PAPER_ACTION_WATCH_ONLY",
