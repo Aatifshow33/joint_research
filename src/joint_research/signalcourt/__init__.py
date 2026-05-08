@@ -20,6 +20,15 @@ from joint_research.signalcourt.passport import (
     build_wallet_flow_passport,
     passport_allows_trade_decision,
 )
+from joint_research.signalcourt.paper_decision import (
+    PAPER_ACTION_ENTER,
+    PAPER_ACTION_EXIT,
+    PAPER_ACTION_NO_TRADE,
+    PAPER_ACTION_WATCH_ONLY,
+    PaperDecisionResult,
+    build_paper_decision_result,
+    paper_decision_allows_order,
+)
 from joint_research.signalcourt.readiness import (
     DerivativesRegimeReadinessPaths,
     SignalReadiness,
@@ -40,6 +49,7 @@ from joint_research.signalcourt.verdict import (
 
 __all__ = [
     "DerivativesRegimeReadinessPaths",
+    "PaperDecisionResult",
     "TradeDecision",
     "SignalPassport",
     "SignalReadiness",
@@ -50,6 +60,7 @@ __all__ = [
     "build_signal_passport",
     "build_research_court_verdict",
     "build_derivatives_regime_verdict",
+    "build_paper_decision_result",
     "build_wallet_flow_verdict",
     "build_trade_decision",
     "build_wallet_flow_passport",
@@ -59,6 +70,11 @@ __all__ = [
     "defender_review",
     "governance_review",
     "decision_allows_execution",
+    "paper_decision_allows_order",
+    "PAPER_ACTION_NO_TRADE",
+    "PAPER_ACTION_WATCH_ONLY",
+    "PAPER_ACTION_ENTER",
+    "PAPER_ACTION_EXIT",
     "ACTION_NO_TRADE",
     "ACTION_WATCH_ONLY",
     "ACTION_PAPER_ENTER",
