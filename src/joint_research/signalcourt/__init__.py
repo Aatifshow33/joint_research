@@ -13,6 +13,12 @@ from joint_research.signalcourt.decision import (
     build_trade_decision,
     decision_allows_execution,
 )
+from joint_research.signalcourt.dashboard_model import (
+    SignalCourtDashboardLane,
+    SignalCourtDashboardModel,
+    build_current_signalcourt_dashboard_model,
+    build_dashboard_model,
+)
 from joint_research.signalcourt.passport import (
     SignalPassport,
     build_derivatives_regime_passport,
@@ -74,6 +80,8 @@ __all__ = [
     "DerivativesRegimeReadinessPaths",
     "PaperDecisionResult",
     "PaperJournalEntry",
+    "SignalCourtDashboardLane",
+    "SignalCourtDashboardModel",
     "SignalCourtPipelineResult",
     "SignalCourtPipelineSnapshot",
     "TradeDecision",
@@ -89,6 +97,8 @@ __all__ = [
     "build_research_court_verdict",
     "build_derivatives_regime_verdict",
     "build_derivatives_regime_pipeline",
+    "build_dashboard_model",
+    "build_current_signalcourt_dashboard_model",
     "build_pipeline_snapshot",
     "build_paper_decision_result",
     "build_paper_journal_entry",
