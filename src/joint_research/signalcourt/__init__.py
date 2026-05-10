@@ -19,6 +19,10 @@ from joint_research.signalcourt.dashboard_model import (
     build_current_signalcourt_dashboard_model,
     build_dashboard_model,
 )
+from joint_research.signalcourt.dashboard_renderer import (
+    render_current_signalcourt_dashboard_summary,
+    render_dashboard_summary,
+)
 from joint_research.signalcourt.passport import (
     SignalPassport,
     build_derivatives_regime_passport,
@@ -99,6 +103,8 @@ __all__ = [
     "build_derivatives_regime_pipeline",
     "build_dashboard_model",
     "build_current_signalcourt_dashboard_model",
+    "render_dashboard_summary",
+    "render_current_signalcourt_dashboard_summary",
     "build_pipeline_snapshot",
     "build_paper_decision_result",
     "build_paper_journal_entry",
