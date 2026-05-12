@@ -79,3 +79,5 @@ The trace captures current pipeline stages for future observability/audit review
 `readiness`, `passport`, `verdict`, `trade_decision`, `paper_decision`, `risk_gate`, and `paper_journal`.
 
 This layer is read-only and in-memory only. It does not write trace files, journals, or artifacts, and it does not authorize ingestion, candidate promotion, paper trading, live trading, or execution. Current wallet-flow and derivatives-regime lanes remain blocked and research-only.
+
+Phase 4.89 closeout note: Phase 4.87 added the in-memory SignalCourt trace schema, and Phase 4.88 documented that schema in `docs/README.md`. This chain supports future observability/audit review while remaining read-only and in-memory only. It does not write trace files, journals, or artifacts, and it does not authorize ingestion, candidate promotion, paper trading, live trading, or execution. Current wallet-flow and derivatives-regime lanes remain blocked and research-only.
