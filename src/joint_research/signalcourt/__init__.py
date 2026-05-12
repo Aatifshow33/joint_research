@@ -70,6 +70,12 @@ from joint_research.signalcourt.snapshot import (
     build_pipeline_snapshot,
     snapshot_allows_order,
 )
+from joint_research.signalcourt.trace import (
+    SignalCourtTrace,
+    SignalCourtTraceStep,
+    build_trace_from_pipeline_result,
+    trace_allows_order,
+)
 from joint_research.signalcourt.verdict import (
     ResearchCourtVerdict,
     build_derivatives_regime_verdict,
@@ -88,6 +94,8 @@ __all__ = [
     "SignalCourtDashboardModel",
     "SignalCourtPipelineResult",
     "SignalCourtPipelineSnapshot",
+    "SignalCourtTrace",
+    "SignalCourtTraceStep",
     "TradeDecision",
     "SignalPassport",
     "SignalReadiness",
@@ -106,6 +114,7 @@ __all__ = [
     "render_dashboard_summary",
     "render_current_signalcourt_dashboard_summary",
     "build_pipeline_snapshot",
+    "build_trace_from_pipeline_result",
     "build_paper_decision_result",
     "build_paper_journal_entry",
     "build_wallet_flow_pipeline",
@@ -124,6 +133,7 @@ __all__ = [
     "journal_entry_allows_order",
     "pipeline_allows_order",
     "snapshot_allows_order",
+    "trace_allows_order",
     "risk_gate_allows_order",
     "PAPER_ACTION_NO_TRADE",
     "PAPER_ACTION_WATCH_ONLY",
