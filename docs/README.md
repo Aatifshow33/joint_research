@@ -63,3 +63,5 @@ This command is stdout-only and prints the in-memory SignalCourt dashboard summa
 - `Live Orders Allowed Count: 0`
 
 This preview does not authorize ingestion, candidate promotion, paper trading, live trading, or execution.
+
+Phase 4.86 closeout note: Phase 4.84 added the local `signalcourt dashboard-summary` CLI, and Phase 4.85 documented `.venv/bin/joint-research signalcourt dashboard-summary` in this README. This chain is preview-only and stdout-only, does not write artifacts or journals, and does not authorize ingestion, candidate promotion, paper trading, live trading, or execution. Current wallet-flow and derivatives-regime lanes remain blocked and research-only.
