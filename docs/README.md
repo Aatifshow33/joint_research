@@ -49,3 +49,17 @@ Codespaces hygiene:
 - Do not commit accidental environment files.
 
 This root pointer helps operators find the disabled wallet-flow documentation chain; it does not make wallet-flow tradeable.
+
+## SignalCourt Dashboard Summary CLI Pointer (Phase 4.85)
+
+Use the local preview command:
+
+`.venv/bin/joint-research signalcourt dashboard-summary`
+
+This command is stdout-only and prints the in-memory SignalCourt dashboard summary. It shows the wallet-flow and derivatives-regime lanes and currently reports a research-only/blocked posture:
+
+- `Any Order Allowed: false`
+- `Paper Orders Allowed Count: 0`
+- `Live Orders Allowed Count: 0`
+
+This preview does not authorize ingestion, candidate promotion, paper trading, live trading, or execution.
