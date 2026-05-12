@@ -9,6 +9,9 @@ from pathlib import Path
 
 import typer
 
+from joint_research.signalcourt.dashboard_renderer import (
+    render_current_signalcourt_dashboard_summary,
+)
 from joint_research.research.wallet_flow_backfill_priority import (
     WalletFlowBackfillPriorityThresholds,
     write_wallet_flow_backfill_priority_artifacts,
@@ -59,12 +62,27 @@ from joint_research.research.wallet_flow_disabled_policy_guard import (
 from joint_research.warehouse import WarehousePaths
 
 _DEFAULT_WALLET_FLOW_BACKFILL_PRIORITY_THRESHOLDS = WalletFlowBackfillPriorityThresholds()
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_DERIVATIVES_ARTIFACT_DIR = _REPO_ROOT / "artifacts/research/derivatives_regime"
+_WALLET_FLOW_ARTIFACT_DIR = _REPO_ROOT / "artifacts/research/wallet_flow_signal"
+_DERIVATIVES_RESULTS_CSV = _DERIVATIVES_ARTIFACT_DIR / "derivatives_regime_results.csv"
+_DERIVATIVES_CANDIDATES_JSON = _DERIVATIVES_ARTIFACT_DIR / "derivatives_regime_candidates.json"
+_DERIVATIVES_SUMMARY_MD = _DERIVATIVES_ARTIFACT_DIR / "derivatives_regime_summary.md"
+_WALLET_FLOW_SIGNAL_SUMMARY_MD = _WALLET_FLOW_ARTIFACT_DIR / "wallet_flow_signal_summary.md"
+_WALLET_FLOW_REJECTION_DIAGNOSTICS_CSV = (
+    _WALLET_FLOW_ARTIFACT_DIR / "wallet_flow_rejection_diagnostics.csv"
+)
+_WALLET_FLOW_REJECTION_SUMMARY_MD = (
+    _WALLET_FLOW_ARTIFACT_DIR / "wallet_flow_rejection_summary.md"
+)
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
 ingest_app = typer.Typer(no_args_is_help=True, help="Ingest data into the warehouse.")
 research_app = typer.Typer(no_args_is_help=True, help="Run research analyses against the warehouse.")
+signalcourt_app = typer.Typer(no_args_is_help=True, help="SignalCourt review utilities.")
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(research_app, name="research")
+app.add_typer(signalcourt_app, name="signalcourt")
 
 
 def _resolve_paths(warehouse_root: Path | None) -> WarehousePaths:
@@ -90,6 +108,46 @@ def _parse_iso_or_relative_days(value: str) -> datetime:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed
+
+
+@signalcourt_app.command("dashboard-summary")
+def signalcourt_dashboard_summary(
+    wallet_signal_summary_md_path: Path = typer.Option(
+        _WALLET_FLOW_SIGNAL_SUMMARY_MD,
+        help="Path to wallet-flow summary markdown.",
+    ),
+    wallet_rejection_diagnostics_csv_path: Path = typer.Option(
+        _WALLET_FLOW_REJECTION_DIAGNOSTICS_CSV,
+        help="Path to wallet-flow rejection diagnostics CSV.",
+    ),
+    wallet_rejection_summary_md_path: Path = typer.Option(
+        _WALLET_FLOW_REJECTION_SUMMARY_MD,
+        help="Path to wallet-flow rejection summary markdown.",
+    ),
+    derivatives_results_csv_path: Path = typer.Option(
+        _DERIVATIVES_RESULTS_CSV,
+        help="Path to derivatives-regime results CSV.",
+    ),
+    derivatives_candidates_json_path: Path = typer.Option(
+        _DERIVATIVES_CANDIDATES_JSON,
+        help="Path to derivatives-regime candidates JSON.",
+    ),
+    derivatives_summary_md_path: Path = typer.Option(
+        _DERIVATIVES_SUMMARY_MD,
+        help="Path to derivatives-regime summary markdown.",
+    ),
+) -> None:
+    """Print the current SignalCourt dashboard summary to stdout."""
+
+    summary = render_current_signalcourt_dashboard_summary(
+        wallet_signal_summary_md_path=wallet_signal_summary_md_path,
+        wallet_rejection_diagnostics_csv_path=wallet_rejection_diagnostics_csv_path,
+        wallet_rejection_summary_md_path=wallet_rejection_summary_md_path,
+        derivatives_results_csv_path=derivatives_results_csv_path,
+        derivatives_candidates_json_path=derivatives_candidates_json_path,
+        derivatives_summary_md_path=derivatives_summary_md_path,
+    )
+    typer.echo(summary)
 
 
 @ingest_app.command("gamma-events")
