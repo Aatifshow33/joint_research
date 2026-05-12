@@ -65,3 +65,17 @@ This command is stdout-only and prints the in-memory SignalCourt dashboard summa
 This preview does not authorize ingestion, candidate promotion, paper trading, live trading, or execution.
 
 Phase 4.86 closeout note: Phase 4.84 added the local `signalcourt dashboard-summary` CLI, and Phase 4.85 documented `.venv/bin/joint-research signalcourt dashboard-summary` in this README. This chain is preview-only and stdout-only, does not write artifacts or journals, and does not authorize ingestion, candidate promotion, paper trading, live trading, or execution. Current wallet-flow and derivatives-regime lanes remain blocked and research-only.
+
+## SignalCourt Trace Schema Pointer (Phase 4.88)
+
+Phase 4.87 added the in-memory SignalCourt trace schema:
+
+- `SignalCourtTraceStep`
+- `SignalCourtTrace`
+- `build_trace_from_pipeline_result(...)`
+- `trace_allows_order(...)`
+
+The trace captures current pipeline stages for future observability/audit review:
+`readiness`, `passport`, `verdict`, `trade_decision`, `paper_decision`, `risk_gate`, and `paper_journal`.
+
+This layer is read-only and in-memory only. It does not write trace files, journals, or artifacts, and it does not authorize ingestion, candidate promotion, paper trading, live trading, or execution. Current wallet-flow and derivatives-regime lanes remain blocked and research-only.
