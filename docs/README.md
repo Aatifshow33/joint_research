@@ -81,3 +81,9 @@ The trace captures current pipeline stages for future observability/audit review
 This layer is read-only and in-memory only. It does not write trace files, journals, or artifacts, and it does not authorize ingestion, candidate promotion, paper trading, live trading, or execution. Current wallet-flow and derivatives-regime lanes remain blocked and research-only.
 
 Phase 4.89 closeout note: Phase 4.87 added the in-memory SignalCourt trace schema, and Phase 4.88 documented that schema in `docs/README.md`. This chain supports future observability/audit review while remaining read-only and in-memory only. It does not write trace files, journals, or artifacts, and it does not authorize ingestion, candidate promotion, paper trading, live trading, or execution. Current wallet-flow and derivatives-regime lanes remain blocked and research-only.
+
+## SignalCourt Golden Evaluations Pointer (Phase 4.91)
+
+Phase 4.90 added golden evaluation regression tests in `tests/test_signalcourt_golden_evaluations.py`. These tests protect against accidental promotion of weak/research-only lanes by asserting the current wallet-flow and derivatives-regime lanes remain blocked, no executable paper/live actions (`PAPER_ENTER`, `PAPER_EXIT`, `LIVE_REVIEW_REQUIRED`, `LIVE_ENTER`) are emitted, and no lane allows order execution. The suite also locks in blocked dashboard posture (`Any Order Allowed: false` with zero paper/live order counts) and preserves non-authorization boundaries.
+
+This regression layer supports future changes to journal writers, connectors, equity lanes, and broker adapters while keeping current safety behavior deterministic. It does not authorize ingestion, candidate promotion, paper trading, live trading, or execution.
