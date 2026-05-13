@@ -109,3 +109,5 @@ Phase 4.96 added the docs-only paper journal writer test plan:
 The plan defines required validation before any writer implementation, including golden evaluations as a precondition, writer tests that prove no unrelated artifacts are modified, and writer tests that prove blocked lanes remain blocked.
 
 This pointer does not authorize ingestion, candidate promotion, paper trading, live trading, order placement, or execution.
+
+Phase 4.98 closeout note: Phase 4.96 added the docs-only paper journal writer test plan, and Phase 4.97 documented that pointer in `docs/README.md`. This chain prepares future writer implementation without implementing file writing today. Future writer work must preserve golden evaluations, protected artifact safety, deterministic output, and blocked-lane behavior. This chain does not authorize ingestion, candidate promotion, paper trading, live trading, order placement, or execution. Current wallet-flow and derivatives-regime lanes remain blocked and research-only.
