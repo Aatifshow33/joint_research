@@ -89,3 +89,12 @@ Phase 4.90 added golden evaluation regression tests in `tests/test_signalcourt_g
 This regression layer supports future changes to journal writers, connectors, equity lanes, and broker adapters while keeping current safety behavior deterministic. It does not authorize ingestion, candidate promotion, paper trading, live trading, or execution.
 
 Phase 4.92 closeout note: Phase 4.90 added golden evaluation regression tests, and Phase 4.91 documented that suite in `docs/README.md`. This chain protects against accidental promotion/execution regressions while supporting future journal writers, connectors, equity lanes, broker adapters, and paper/live execution work. It does not authorize ingestion, candidate promotion, paper trading, live trading, or execution. Current wallet-flow and derivatives-regime lanes remain blocked and research-only.
+
+## SignalCourt Paper Journal Writer Spec Pointer (Phase 4.94)
+
+Phase 4.93 added the docs-only paper journal writer spec:
+`docs/signalcourt_paper_journal_writer_spec.md`.
+
+The spec defines the future persistence contract for SignalCourt paper journal entries, including JSONL output and optional Markdown summaries in a later implementation phase, with safe/atomic deterministic write requirements.
+
+No journal writer is implemented in the current phase, and no files are written by this pointer/spec phase. This chain does not authorize ingestion, candidate promotion, paper trading, live trading, order placement, or execution. Golden evaluations must remain passing before any writer implementation work begins.
