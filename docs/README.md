@@ -100,3 +100,12 @@ The spec defines the future persistence contract for SignalCourt paper journal e
 No journal writer is implemented in the current phase, and no files are written by this pointer/spec phase. This chain does not authorize ingestion, candidate promotion, paper trading, live trading, order placement, or execution. Golden evaluations must remain passing before any writer implementation work begins.
 
 Phase 4.95 closeout note: Phase 4.93 added the docs-only SignalCourt paper journal writer spec, and Phase 4.94 documented the spec pointer in `docs/README.md`. This chain prepares future journal persistence without implementing file writing today. Future writer implementation must preserve deterministic, safe, atomic/append-only behavior, and golden evaluations must remain passing before implementation. This chain does not authorize ingestion, candidate promotion, paper trading, live trading, order placement, or execution. Current wallet-flow and derivatives-regime lanes remain blocked and research-only.
+
+## SignalCourt Paper Journal Writer Test Plan Pointer (Phase 4.97)
+
+Phase 4.96 added the docs-only paper journal writer test plan:
+`docs/signalcourt_paper_journal_writer_test_plan.md`.
+
+The plan defines required validation before any writer implementation, including golden evaluations as a precondition, writer tests that prove no unrelated artifacts are modified, and writer tests that prove blocked lanes remain blocked.
+
+This pointer does not authorize ingestion, candidate promotion, paper trading, live trading, order placement, or execution.
