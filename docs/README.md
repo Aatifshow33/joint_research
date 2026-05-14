@@ -111,3 +111,19 @@ The plan defines required validation before any writer implementation, including
 This pointer does not authorize ingestion, candidate promotion, paper trading, live trading, order placement, or execution.
 
 Phase 4.98 closeout note: Phase 4.96 added the docs-only paper journal writer test plan, and Phase 4.97 documented that pointer in `docs/README.md`. This chain prepares future writer implementation without implementing file writing today. Future writer work must preserve golden evaluations, protected artifact safety, deterministic output, and blocked-lane behavior. This chain does not authorize ingestion, candidate promotion, paper trading, live trading, order placement, or execution. Current wallet-flow and derivatives-regime lanes remain blocked and research-only.
+
+## SignalCourt Paper Journal Writer Skeleton Pointer (Phase 5.00)
+
+Phase 4.99 added the non-executing SignalCourt paper journal writer skeleton:
+`src/joint_research/signalcourt/paper_journal_writer.py`.
+
+The writer requires an explicit `output_dir` and is test-controlled/isolated by design. It writes deterministic JSONL output only under the provided output directory and does not write to real artifacts by default.
+
+This writer skeleton does not execute trades, does not call brokers, exchanges, LLMs, or external APIs, and does not mutate research artifacts. It does not authorize paper trading, live trading, or order placement.
+
+Current safety posture remains unchanged:
+
+- wallet-flow remains `CLOSED_EXPLORATORY_ONLY` / `NO_TRADE_BLOCKED`
+- derivatives-regime remains `ACTIVE_RESEARCH_WEAK` / `WATCH_ONLY_BLOCKED` or `NO_TRADE_BLOCKED`
+
+Golden evaluations must remain passing for this chain.
