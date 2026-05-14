@@ -127,3 +127,5 @@ Current safety posture remains unchanged:
 - derivatives-regime remains `ACTIVE_RESEARCH_WEAK` / `WATCH_ONLY_BLOCKED` or `NO_TRADE_BLOCKED`
 
 Golden evaluations must remain passing for this chain.
+
+Phase 5.01 closeout note: Phase 5.00 added the `docs/README.md` pointer for the non-executing SignalCourt paper journal writer skeleton (`e960e80`), and the closeout note for that docs-pointer chain is recorded in `docs/signalcourt_paper_journal_writer_docs_pointer_closeout.md`. This chain remains docs-only/non-executing and does not authorize ingestion, candidate promotion, paper trading, live trading, order placement, or execution. Current wallet-flow and derivatives-regime lanes remain blocked and research-only, and golden evaluations remain required.
