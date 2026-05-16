@@ -50,7 +50,8 @@ def write_paper_journal_entry(
 
     payload = _build_payload(entry=entry, trace=trace, run_id=safe_run_id)
     line = json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n"
-    output_path.write_text(line, encoding="utf-8")
+    with output_path.open("a", encoding="utf-8") as handle:
+        handle.write(line)
 
     return PaperJournalWriteResult(
         output_path=output_path,

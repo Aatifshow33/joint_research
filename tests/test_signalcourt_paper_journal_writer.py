@@ -83,11 +83,15 @@ def test_writer_creates_jsonl_inside_explicit_output_dir_and_is_deterministic(tm
     result_second = write_paper_journal_entry(entry, trace, output_dir, run_id="run_001")
     second_bytes = result_second.output_path.read_bytes()
     assert result_first == result_second
-    assert first_bytes == second_bytes
+    assert second_bytes.startswith(first_bytes)
+    assert len(second_bytes) > len(first_bytes)
 
     lines = result_first.output_path.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 1
-    payload = json.loads(lines[0])
+    assert len(lines) == 2
+    first_payload = json.loads(lines[0])
+    second_payload = json.loads(lines[1])
+    assert first_payload == second_payload
+    payload = first_payload
     assert payload["non_authorization_notice"]
     assert payload["blocked"] is True
     assert payload["paper_order_allowed"] is False
