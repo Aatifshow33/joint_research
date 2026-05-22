@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -148,6 +149,262 @@ def signalcourt_dashboard_summary(
         derivatives_summary_md_path=derivatives_summary_md_path,
     )
     typer.echo(summary)
+
+
+@signalcourt_app.command("live-submit-dry-run")
+def signalcourt_live_submit_dry_run(
+    lane: str = typer.Option(..., help="Signal lane: wallet-flow or derivatives-regime."),
+    symbol: str = typer.Option(..., help="Order symbol for dry-run evaluation."),
+    side: str = typer.Option(..., help="Order side (BUY/SELL) for dry-run evaluation."),
+    quantity: float = typer.Option(..., help="Requested order quantity."),
+    limit_price: float = typer.Option(..., help="Requested limit price."),
+    notional_usd: float = typer.Option(..., help="Requested notional USD."),
+    venue: str = typer.Option(..., help="Requested venue."),
+    order_type: str = typer.Option(..., help="Requested order type."),
+    manual_approval: bool = typer.Option(
+        False,
+        "--manual-approval/--no-manual-approval",
+        help="Synthetic manual approval flag for dry-run gate evaluation.",
+    ),
+    operator_acknowledgement: bool = typer.Option(
+        False,
+        "--operator-acknowledgement/--no-operator-acknowledgement",
+        help="Synthetic operator acknowledgement flag for dry-run gate evaluation.",
+    ),
+    max_micro_live_notional_usd: float = typer.Option(
+        5.0,
+        help="Synthetic max micro-live notional cap for dry-run gate evaluation.",
+    ),
+    wallet_signal_summary_md_path: Path = typer.Option(
+        _WALLET_FLOW_SIGNAL_SUMMARY_MD,
+        help="Path to wallet-flow summary markdown.",
+    ),
+    wallet_rejection_diagnostics_csv_path: Path = typer.Option(
+        _WALLET_FLOW_REJECTION_DIAGNOSTICS_CSV,
+        help="Path to wallet-flow rejection diagnostics CSV.",
+    ),
+    wallet_rejection_summary_md_path: Path = typer.Option(
+        _WALLET_FLOW_REJECTION_SUMMARY_MD,
+        help="Path to wallet-flow rejection summary markdown.",
+    ),
+    derivatives_results_csv_path: Path = typer.Option(
+        _DERIVATIVES_RESULTS_CSV,
+        help="Path to derivatives-regime results CSV.",
+    ),
+    derivatives_candidates_json_path: Path = typer.Option(
+        _DERIVATIVES_CANDIDATES_JSON,
+        help="Path to derivatives-regime candidates JSON.",
+    ),
+    derivatives_summary_md_path: Path = typer.Option(
+        _DERIVATIVES_SUMMARY_MD,
+        help="Path to derivatives-regime summary markdown.",
+    ),
+) -> None:
+    """Run a full SignalCourt live-submit dry run without any execution or network calls."""
+
+    from joint_research.signalcourt.decision_preview import build_decision_preview  # noqa: PLC0415
+    from joint_research.signalcourt.execution_adapter import (  # noqa: PLC0415
+        ADAPTER_MODE_DRY_RUN,
+        ADAPTER_MODE_LIVE_DISABLED,
+        ExecutionAdapterPolicy,
+        build_execution_request_from_preview,
+        evaluate_execution_adapter,
+    )
+    from joint_research.signalcourt.micro_live_gate import (  # noqa: PLC0415
+        MicroLiveGatePolicy,
+        build_micro_live_request,
+        evaluate_micro_live_gate,
+    )
+    from joint_research.signalcourt.paper_fill_simulator import (  # noqa: PLC0415
+        FILL_MODE_REJECT_IF_BLOCKED,
+        PaperFillMarketSnapshot,
+        simulate_paper_fill,
+    )
+    from joint_research.signalcourt.paper_order_preview import (  # noqa: PLC0415
+        PaperOrderRequest,
+        build_paper_order_preview,
+    )
+    from joint_research.signalcourt.paper_performance_gate import (  # noqa: PLC0415
+        review_paper_performance,
+    )
+    from joint_research.signalcourt.pipeline import (  # noqa: PLC0415
+        build_derivatives_regime_pipeline,
+        build_wallet_flow_pipeline,
+    )
+    from joint_research.signalcourt.risk_gate import (  # noqa: PLC0415
+        default_decision_preview_risk_policy,
+        default_tiny_account_risk_config,
+        evaluate_decision_preview_risk_gate,
+    )
+
+    normalized_lane = lane.strip().lower()
+    if normalized_lane in {"wallet-flow", "wallet_flow", "wallet_flow_signal"}:
+        pipeline = build_wallet_flow_pipeline(
+            signal_summary_md_path=wallet_signal_summary_md_path,
+            rejection_diagnostics_csv_path=wallet_rejection_diagnostics_csv_path,
+            rejection_summary_md_path=wallet_rejection_summary_md_path,
+            risk_config=default_tiny_account_risk_config(50.0),
+        )
+        lane_label = "wallet-flow"
+    elif normalized_lane in {"derivatives-regime", "derivatives_regime"}:
+        pipeline = build_derivatives_regime_pipeline(
+            results_csv_path=derivatives_results_csv_path,
+            candidates_json_path=derivatives_candidates_json_path,
+            summary_md_path=derivatives_summary_md_path,
+            risk_config=default_tiny_account_risk_config(100.0),
+        )
+        lane_label = "derivatives-regime"
+    else:
+        raise typer.BadParameter(
+            "lane must be one of: wallet-flow, derivatives-regime",
+            param_hint="--lane",
+        )
+
+    decision_preview = build_decision_preview(pipeline)
+    decision_risk = evaluate_decision_preview_risk_gate(
+        decision_preview,
+        risk_policy=default_decision_preview_risk_policy(),
+    )
+    paper_order_preview = build_paper_order_preview(
+        decision_preview,
+        decision_risk,
+        order_request=PaperOrderRequest(
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            limit_price=limit_price,
+            notional_usd=notional_usd,
+            venue=venue,
+            order_type=order_type,
+        ),
+    )
+    paper_fill = simulate_paper_fill(
+        paper_order_preview,
+        market_snapshot=PaperFillMarketSnapshot(
+            mark_price=float(limit_price) if float(limit_price) > 0 else 0.0,
+            bid_price=float(limit_price) if float(limit_price) > 0 else 0.0,
+            ask_price=float(limit_price) if float(limit_price) > 0 else 0.0,
+            slippage_bps=0.0,
+            fee_bps=0.0,
+            fill_mode=FILL_MODE_REJECT_IF_BLOCKED,
+        ),
+    )
+    paper_performance = review_paper_performance([paper_fill])
+    execution_request = build_execution_request_from_preview(
+        paper_order_preview,
+        requested_mode=ADAPTER_MODE_DRY_RUN,
+    )
+    execution_result = evaluate_execution_adapter(
+        preview=paper_order_preview,
+        fill_result=paper_fill,
+        performance_result=paper_performance,
+        request=execution_request,
+        policy=ExecutionAdapterPolicy(
+            live_trading_enabled=False,
+            paper_trading_enabled=False,
+            require_manual_approval=True,
+            kill_switch_enabled=True,
+            max_notional_usd=max_micro_live_notional_usd,
+            allowlisted_symbols=(),
+            allowlisted_venues=(),
+            allow_market_orders=False,
+            allow_leverage=False,
+            adapter_mode=ADAPTER_MODE_LIVE_DISABLED,
+        ),
+    )
+    micro_live_request = build_micro_live_request(
+        performance_result=paper_performance,
+        execution_result=execution_result,
+        symbol=symbol,
+        venue=venue,
+        requested_notional_usd=notional_usd,
+        order_type=order_type,
+    )
+    micro_live_result = evaluate_micro_live_gate(
+        performance_result=paper_performance,
+        execution_result=execution_result,
+        request=micro_live_request,
+        policy=MicroLiveGatePolicy(
+            micro_live_enabled=False,
+            require_manual_approval=True,
+            manual_approval_granted=manual_approval,
+            kill_switch_enabled=True,
+            max_micro_live_notional_usd=max_micro_live_notional_usd,
+            max_daily_loss_usd=1.0,
+            max_session_loss_usd=0.5,
+            allowlisted_symbols=(),
+            allowlisted_venues=(),
+            allow_market_orders=False,
+            allow_leverage=False,
+            require_paper_candidate=True,
+            require_execution_adapter_live_disabled=True,
+            require_no_execution_flags=True,
+            require_golden_evaluations=True,
+            require_operator_acknowledgement=operator_acknowledgement,
+        ),
+    )
+
+    payload = {
+        "ok": True,
+        "source": "signalcourt.live_submit_dry_run",
+        "mode": "DRY_RUN_ONLY",
+        "lane": lane_label,
+        "run_id": decision_preview.run_id,
+        "decision_preview_summary": {
+            "decision_action": decision_preview.decision_action,
+            "paper_eligible": decision_preview.paper_eligible,
+            "live_eligible": decision_preview.live_eligible,
+            "blocked_reasons": decision_preview.blocked_reasons,
+        },
+        "risk_gate_summary": {
+            "risk_verdict": decision_risk.risk_verdict,
+            "paper_allowed": decision_risk.paper_allowed,
+            "live_allowed": decision_risk.live_allowed,
+            "blocked_reasons": decision_risk.blocked_reasons,
+        },
+        "paper_order_preview_summary": {
+            "paper_order_action": paper_order_preview.paper_order_action,
+            "paper_order_allowed": paper_order_preview.paper_order_allowed,
+            "live_order_allowed": paper_order_preview.live_order_allowed,
+            "blocked_reasons": paper_order_preview.blocked_reasons,
+        },
+        "paper_fill_simulation_summary": {
+            "simulated_fill_status": paper_fill.simulated_fill_status,
+            "paper_fill_allowed": paper_fill.paper_fill_allowed,
+            "live_fill_allowed": paper_fill.live_fill_allowed,
+            "blocked_reasons": paper_fill.blocked_reasons,
+        },
+        "paper_performance_gate_summary": {
+            "performance_verdict": paper_performance.performance_verdict,
+            "paper_review_allowed": paper_performance.paper_review_allowed,
+            "live_review_allowed": paper_performance.live_review_allowed,
+            "blocked_reasons": paper_performance.blocked_reasons,
+        },
+        "execution_adapter_summary": {
+            "execution_verdict": execution_result.execution_verdict,
+            "paper_execution_allowed": execution_result.paper_execution_allowed,
+            "live_execution_allowed": execution_result.live_execution_allowed,
+            "order_submitted": execution_result.order_submitted,
+            "broker_call_performed": execution_result.broker_call_performed,
+            "exchange_call_performed": execution_result.exchange_call_performed,
+            "blocked_reasons": execution_result.blocked_reasons,
+        },
+        "micro_live_gate_summary": {
+            "micro_live_verdict": micro_live_result.micro_live_verdict,
+            "micro_live_review_ready": micro_live_result.micro_live_review_ready,
+            "micro_live_execution_allowed": micro_live_result.micro_live_execution_allowed,
+            "live_execution_allowed": micro_live_result.live_execution_allowed,
+            "blocked_reasons": micro_live_result.blocked_reasons,
+            "required_next_gates": micro_live_result.required_next_gates,
+        },
+        "final_verdict": micro_live_result.micro_live_verdict,
+        "order_submitted": False,
+        "broker_call_performed": False,
+        "exchange_call_performed": False,
+        "live_execution_allowed": False,
+        "non_authorization_notice": micro_live_result.non_authorization_notice,
+    }
+    typer.echo(json.dumps(payload, sort_keys=True, separators=(",", ":")))
 
 
 @ingest_app.command("gamma-events")
