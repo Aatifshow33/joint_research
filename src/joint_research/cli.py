@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import math
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -236,6 +237,9 @@ def signalcourt_live_submit_dry_run(
         default_tiny_account_risk_config,
         evaluate_decision_preview_risk_gate,
     )
+    from joint_research.signalcourt.readiness_bundle import (  # noqa: PLC0415
+        build_readiness_bundle,
+    )
 
     normalized_lane = lane.strip().lower()
     if normalized_lane in {"wallet-flow", "wallet_flow", "wallet_flow_signal"}:
@@ -343,6 +347,15 @@ def signalcourt_live_submit_dry_run(
             require_operator_acknowledgement=operator_acknowledgement,
         ),
     )
+    readiness_bundle = build_readiness_bundle(
+        decision_preview=decision_preview,
+        decision_risk=decision_risk,
+        paper_order_preview=paper_order_preview,
+        paper_fill_result=paper_fill,
+        paper_performance_result=paper_performance,
+        execution_adapter_result=execution_result,
+        micro_live_gate_result=micro_live_result,
+    )
 
     payload = {
         "ok": True,
@@ -350,11 +363,23 @@ def signalcourt_live_submit_dry_run(
         "mode": "DRY_RUN_ONLY",
         "lane": lane_label,
         "run_id": decision_preview.run_id,
+        "decision_preview": {
+            "decision_action": decision_preview.decision_action,
+            "paper_eligible": decision_preview.paper_eligible,
+            "live_eligible": decision_preview.live_eligible,
+            "blocked_reasons": decision_preview.blocked_reasons,
+        },
         "decision_preview_summary": {
             "decision_action": decision_preview.decision_action,
             "paper_eligible": decision_preview.paper_eligible,
             "live_eligible": decision_preview.live_eligible,
             "blocked_reasons": decision_preview.blocked_reasons,
+        },
+        "risk_gate": {
+            "risk_verdict": decision_risk.risk_verdict,
+            "paper_allowed": decision_risk.paper_allowed,
+            "live_allowed": decision_risk.live_allowed,
+            "blocked_reasons": decision_risk.blocked_reasons,
         },
         "risk_gate_summary": {
             "risk_verdict": decision_risk.risk_verdict,
@@ -362,11 +387,23 @@ def signalcourt_live_submit_dry_run(
             "live_allowed": decision_risk.live_allowed,
             "blocked_reasons": decision_risk.blocked_reasons,
         },
+        "paper_order_preview": {
+            "paper_order_action": paper_order_preview.paper_order_action,
+            "paper_order_allowed": paper_order_preview.paper_order_allowed,
+            "live_order_allowed": paper_order_preview.live_order_allowed,
+            "blocked_reasons": paper_order_preview.blocked_reasons,
+        },
         "paper_order_preview_summary": {
             "paper_order_action": paper_order_preview.paper_order_action,
             "paper_order_allowed": paper_order_preview.paper_order_allowed,
             "live_order_allowed": paper_order_preview.live_order_allowed,
             "blocked_reasons": paper_order_preview.blocked_reasons,
+        },
+        "paper_fill_simulation": {
+            "simulated_fill_status": paper_fill.simulated_fill_status,
+            "paper_fill_allowed": paper_fill.paper_fill_allowed,
+            "live_fill_allowed": paper_fill.live_fill_allowed,
+            "blocked_reasons": paper_fill.blocked_reasons,
         },
         "paper_fill_simulation_summary": {
             "simulated_fill_status": paper_fill.simulated_fill_status,
@@ -374,11 +411,26 @@ def signalcourt_live_submit_dry_run(
             "live_fill_allowed": paper_fill.live_fill_allowed,
             "blocked_reasons": paper_fill.blocked_reasons,
         },
+        "paper_performance_gate": {
+            "performance_verdict": paper_performance.performance_verdict,
+            "paper_review_allowed": paper_performance.paper_review_allowed,
+            "live_review_allowed": paper_performance.live_review_allowed,
+            "blocked_reasons": paper_performance.blocked_reasons,
+        },
         "paper_performance_gate_summary": {
             "performance_verdict": paper_performance.performance_verdict,
             "paper_review_allowed": paper_performance.paper_review_allowed,
             "live_review_allowed": paper_performance.live_review_allowed,
             "blocked_reasons": paper_performance.blocked_reasons,
+        },
+        "execution_adapter": {
+            "execution_verdict": execution_result.execution_verdict,
+            "paper_execution_allowed": execution_result.paper_execution_allowed,
+            "live_execution_allowed": execution_result.live_execution_allowed,
+            "order_submitted": execution_result.order_submitted,
+            "broker_call_performed": execution_result.broker_call_performed,
+            "exchange_call_performed": execution_result.exchange_call_performed,
+            "blocked_reasons": execution_result.blocked_reasons,
         },
         "execution_adapter_summary": {
             "execution_verdict": execution_result.execution_verdict,
@@ -389,6 +441,14 @@ def signalcourt_live_submit_dry_run(
             "exchange_call_performed": execution_result.exchange_call_performed,
             "blocked_reasons": execution_result.blocked_reasons,
         },
+        "micro_live_gate": {
+            "micro_live_verdict": micro_live_result.micro_live_verdict,
+            "micro_live_review_ready": micro_live_result.micro_live_review_ready,
+            "micro_live_execution_allowed": micro_live_result.micro_live_execution_allowed,
+            "live_execution_allowed": micro_live_result.live_execution_allowed,
+            "blocked_reasons": micro_live_result.blocked_reasons,
+            "required_next_gates": micro_live_result.required_next_gates,
+        },
         "micro_live_gate_summary": {
             "micro_live_verdict": micro_live_result.micro_live_verdict,
             "micro_live_review_ready": micro_live_result.micro_live_review_ready,
@@ -397,10 +457,13 @@ def signalcourt_live_submit_dry_run(
             "blocked_reasons": micro_live_result.blocked_reasons,
             "required_next_gates": micro_live_result.required_next_gates,
         },
+        "readiness_bundle": asdict(readiness_bundle),
+        "final_readiness_verdict": readiness_bundle.final_readiness_verdict,
         "final_verdict": micro_live_result.micro_live_verdict,
         "order_submitted": False,
         "broker_call_performed": False,
         "exchange_call_performed": False,
+        "micro_live_execution_allowed": False,
         "live_execution_allowed": False,
         "non_authorization_notice": micro_live_result.non_authorization_notice,
     }

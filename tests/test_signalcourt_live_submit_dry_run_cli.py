@@ -90,6 +90,13 @@ def test_cli_outputs_valid_deterministic_json() -> None:
 def test_output_includes_all_pipeline_summaries() -> None:
     result = _invoke_dry_run(lane="wallet-flow")
     payload = json.loads(result.output)
+    assert "decision_preview" in payload
+    assert "risk_gate" in payload
+    assert "paper_order_preview" in payload
+    assert "paper_fill_simulation" in payload
+    assert "paper_performance_gate" in payload
+    assert "execution_adapter" in payload
+    assert "micro_live_gate" in payload
     assert "decision_preview_summary" in payload
     assert "risk_gate_summary" in payload
     assert "paper_order_preview_summary" in payload
@@ -97,7 +104,15 @@ def test_output_includes_all_pipeline_summaries() -> None:
     assert "paper_performance_gate_summary" in payload
     assert "execution_adapter_summary" in payload
     assert "micro_live_gate_summary" in payload
+    assert "readiness_bundle" in payload
+    assert "final_readiness_verdict" in payload
     assert "final_verdict" in payload
+
+
+def test_final_readiness_verdict_mirrors_bundle_verdict() -> None:
+    result = _invoke_dry_run(lane="wallet-flow")
+    payload = json.loads(result.output)
+    assert payload["final_readiness_verdict"] == payload["readiness_bundle"]["final_readiness_verdict"]
 
 
 def test_output_non_submitting_flags_are_false() -> None:
@@ -106,6 +121,7 @@ def test_output_non_submitting_flags_are_false() -> None:
     assert payload["order_submitted"] is False
     assert payload["broker_call_performed"] is False
     assert payload["exchange_call_performed"] is False
+    assert payload["micro_live_execution_allowed"] is False
     assert payload["live_execution_allowed"] is False
 
 
@@ -119,8 +135,12 @@ def test_output_includes_non_authorization_notice() -> None:
 def test_wallet_flow_path_remains_non_executable() -> None:
     result = _invoke_dry_run(lane="wallet-flow")
     payload = json.loads(result.output)
+    assert payload["final_readiness_verdict"] == "READINESS_BLOCKED"
+    assert payload["readiness_bundle"]["final_readiness_verdict"] == "READINESS_BLOCKED"
     assert payload["micro_live_gate_summary"]["micro_live_execution_allowed"] is False
     assert payload["micro_live_gate_summary"]["live_execution_allowed"] is False
+    assert payload["readiness_bundle"]["micro_live_execution_allowed"] is False
+    assert payload["readiness_bundle"]["live_execution_allowed"] is False
 
 
 def test_derivatives_path_remains_non_executable() -> None:
@@ -128,6 +148,8 @@ def test_derivatives_path_remains_non_executable() -> None:
     payload = json.loads(result.output)
     assert payload["micro_live_gate_summary"]["micro_live_execution_allowed"] is False
     assert payload["micro_live_gate_summary"]["live_execution_allowed"] is False
+    assert payload["readiness_bundle"]["micro_live_execution_allowed"] is False
+    assert payload["readiness_bundle"]["live_execution_allowed"] is False
 
 
 def test_synthetic_approval_args_still_do_not_submit_orders() -> None:
@@ -144,7 +166,11 @@ def test_synthetic_approval_args_still_do_not_submit_orders() -> None:
     assert payload["order_submitted"] is False
     assert payload["broker_call_performed"] is False
     assert payload["exchange_call_performed"] is False
+    assert payload["micro_live_execution_allowed"] is False
     assert payload["live_execution_allowed"] is False
+    if payload["final_readiness_verdict"] == "MICRO_LIVE_REVIEW_READY":
+        assert payload["readiness_bundle"]["micro_live_execution_allowed"] is False
+        assert payload["readiness_bundle"]["live_execution_allowed"] is False
 
 
 def test_cli_does_not_create_artifacts(tmp_path: Path, monkeypatch) -> None:
