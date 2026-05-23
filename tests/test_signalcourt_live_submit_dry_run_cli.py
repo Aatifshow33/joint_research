@@ -105,6 +105,8 @@ def test_output_includes_all_pipeline_summaries() -> None:
     assert "execution_adapter_summary" in payload
     assert "micro_live_gate_summary" in payload
     assert "readiness_bundle" in payload
+    assert "approval_packet" in payload
+    assert "approval_status" in payload
     assert "final_readiness_verdict" in payload
     assert "final_verdict" in payload
 
@@ -113,6 +115,12 @@ def test_final_readiness_verdict_mirrors_bundle_verdict() -> None:
     result = _invoke_dry_run(lane="wallet-flow")
     payload = json.loads(result.output)
     assert payload["final_readiness_verdict"] == payload["readiness_bundle"]["final_readiness_verdict"]
+
+
+def test_approval_status_mirrors_packet_status() -> None:
+    result = _invoke_dry_run(lane="wallet-flow")
+    payload = json.loads(result.output)
+    assert payload["approval_status"] == payload["approval_packet"]["approval_status"]
 
 
 def test_output_non_submitting_flags_are_false() -> None:
@@ -158,6 +166,12 @@ def test_synthetic_approval_args_still_do_not_submit_orders() -> None:
         extra=[
             "--manual-approval",
             "--operator-acknowledgement",
+            "--approval-note",
+            "approved for dry-run only",
+            "--approval-ttl-minutes",
+            "120",
+            "--max-approved-notional-usd",
+            "1000",
             "--max-micro-live-notional-usd",
             "1000",
         ],
@@ -168,6 +182,11 @@ def test_synthetic_approval_args_still_do_not_submit_orders() -> None:
     assert payload["exchange_call_performed"] is False
     assert payload["micro_live_execution_allowed"] is False
     assert payload["live_execution_allowed"] is False
+    assert payload["approval_packet"]["micro_live_execution_allowed"] is False
+    assert payload["approval_packet"]["live_execution_allowed"] is False
+    assert payload["approval_packet"]["order_submitted"] is False
+    assert payload["approval_packet"]["broker_call_performed"] is False
+    assert payload["approval_packet"]["exchange_call_performed"] is False
     if payload["final_readiness_verdict"] == "MICRO_LIVE_REVIEW_READY":
         assert payload["readiness_bundle"]["micro_live_execution_allowed"] is False
         assert payload["readiness_bundle"]["live_execution_allowed"] is False

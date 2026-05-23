@@ -176,6 +176,18 @@ def signalcourt_live_submit_dry_run(
         5.0,
         help="Synthetic max micro-live notional cap for dry-run gate evaluation.",
     ),
+    approval_note: str = typer.Option(
+        "",
+        help="Optional operator note for approval packet dry-run evaluation.",
+    ),
+    approval_ttl_minutes: int = typer.Option(
+        60,
+        help="Optional approval TTL minutes for approval packet dry-run evaluation.",
+    ),
+    max_approved_notional_usd: float = typer.Option(
+        0.0,
+        help="Optional max approved notional USD for approval packet dry-run evaluation.",
+    ),
     wallet_signal_summary_md_path: Path = typer.Option(
         _WALLET_FLOW_SIGNAL_SUMMARY_MD,
         help="Path to wallet-flow summary markdown.",
@@ -215,6 +227,10 @@ def signalcourt_live_submit_dry_run(
         MicroLiveGatePolicy,
         build_micro_live_request,
         evaluate_micro_live_gate,
+    )
+    from joint_research.signalcourt.live_approval_packet import (  # noqa: PLC0415
+        LiveApprovalRequest,
+        build_live_approval_packet,
     )
     from joint_research.signalcourt.paper_fill_simulator import (  # noqa: PLC0415
         FILL_MODE_REJECT_IF_BLOCKED,
@@ -356,6 +372,18 @@ def signalcourt_live_submit_dry_run(
         execution_adapter_result=execution_result,
         micro_live_gate_result=micro_live_result,
     )
+    approval_packet = build_live_approval_packet(
+        readiness_bundle,
+        approval_request=LiveApprovalRequest(
+            requested_by="signalcourt_live_submit_dry_run_cli",
+            operator_acknowledgement=operator_acknowledgement,
+            manual_approval_granted=manual_approval,
+            approval_note=approval_note,
+            approval_ttl_minutes=approval_ttl_minutes,
+            max_approved_notional_usd=max_approved_notional_usd,
+            requested_notional_usd=notional_usd,
+        ),
+    )
 
     payload = {
         "ok": True,
@@ -458,6 +486,8 @@ def signalcourt_live_submit_dry_run(
             "required_next_gates": micro_live_result.required_next_gates,
         },
         "readiness_bundle": asdict(readiness_bundle),
+        "approval_packet": asdict(approval_packet),
+        "approval_status": approval_packet.approval_status,
         "final_readiness_verdict": readiness_bundle.final_readiness_verdict,
         "final_verdict": micro_live_result.micro_live_verdict,
         "order_submitted": False,
