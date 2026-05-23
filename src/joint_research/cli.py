@@ -500,6 +500,155 @@ def signalcourt_live_submit_dry_run(
     typer.echo(json.dumps(payload, sort_keys=True, separators=(",", ":")))
 
 
+@signalcourt_app.command("live-submit")
+def signalcourt_live_submit(
+    lane: str = typer.Option(..., help="Signal lane: wallet-flow or derivatives-regime."),
+    symbol: str = typer.Option(..., help="Order symbol for live-submit skeleton."),
+    side: str = typer.Option(..., help="Order side (BUY/SELL) for live-submit skeleton."),
+    quantity: float = typer.Option(..., help="Requested order quantity."),
+    limit_price: float = typer.Option(..., help="Requested limit price."),
+    notional_usd: float = typer.Option(..., help="Requested notional USD."),
+    venue: str = typer.Option(..., help="Requested venue."),
+    order_type: str = typer.Option(..., help="Requested order type."),
+    approval_packet_id: str = typer.Option(..., help="Approval packet id from prior dry-run chain."),
+    confirm_live: bool = typer.Option(
+        False,
+        "--confirm-live/--no-confirm-live",
+        help="Explicit operator confirmation flag. Required in this skeleton phase.",
+    ),
+    operator_acknowledgement: bool = typer.Option(
+        False,
+        "--operator-acknowledgement/--no-operator-acknowledgement",
+        help="Explicit operator acknowledgement flag. Required in this skeleton phase.",
+    ),
+    wallet_signal_summary_md_path: Path = typer.Option(
+        _WALLET_FLOW_SIGNAL_SUMMARY_MD,
+        help="Path to wallet-flow summary markdown.",
+    ),
+    wallet_rejection_diagnostics_csv_path: Path = typer.Option(
+        _WALLET_FLOW_REJECTION_DIAGNOSTICS_CSV,
+        help="Path to wallet-flow rejection diagnostics CSV.",
+    ),
+    wallet_rejection_summary_md_path: Path = typer.Option(
+        _WALLET_FLOW_REJECTION_SUMMARY_MD,
+        help="Path to wallet-flow rejection summary markdown.",
+    ),
+    derivatives_results_csv_path: Path = typer.Option(
+        _DERIVATIVES_RESULTS_CSV,
+        help="Path to derivatives-regime results CSV.",
+    ),
+    derivatives_candidates_json_path: Path = typer.Option(
+        _DERIVATIVES_CANDIDATES_JSON,
+        help="Path to derivatives-regime candidates JSON.",
+    ),
+    derivatives_summary_md_path: Path = typer.Option(
+        _DERIVATIVES_SUMMARY_MD,
+        help="Path to derivatives-regime summary markdown.",
+    ),
+) -> None:
+    """SignalCourt live-submit operator interface skeleton with hard-disabled transport."""
+
+    from joint_research.signalcourt.pipeline import (  # noqa: PLC0415
+        build_derivatives_regime_pipeline,
+        build_wallet_flow_pipeline,
+        pipeline_allows_order,
+    )
+    from joint_research.signalcourt.risk_gate import (  # noqa: PLC0415
+        default_tiny_account_risk_config,
+    )
+
+    if not confirm_live:
+        raise typer.BadParameter(
+            "live-submit skeleton requires explicit --confirm-live",
+            param_hint="--confirm-live",
+        )
+    if not operator_acknowledgement:
+        raise typer.BadParameter(
+            "live-submit skeleton requires explicit --operator-acknowledgement",
+            param_hint="--operator-acknowledgement",
+        )
+
+    normalized_lane = lane.strip().lower()
+    if normalized_lane in {"wallet-flow", "wallet_flow", "wallet_flow_signal"}:
+        lane_label = "wallet-flow"
+        pipeline = build_wallet_flow_pipeline(
+            signal_summary_md_path=wallet_signal_summary_md_path,
+            rejection_diagnostics_csv_path=wallet_rejection_diagnostics_csv_path,
+            rejection_summary_md_path=wallet_rejection_summary_md_path,
+            risk_config=default_tiny_account_risk_config(50.0),
+        )
+    elif normalized_lane in {"derivatives-regime", "derivatives_regime"}:
+        lane_label = "derivatives-regime"
+        pipeline = build_derivatives_regime_pipeline(
+            results_csv_path=derivatives_results_csv_path,
+            candidates_json_path=derivatives_candidates_json_path,
+            summary_md_path=derivatives_summary_md_path,
+            risk_config=default_tiny_account_risk_config(100.0),
+        )
+    else:
+        raise typer.BadParameter(
+            "lane must be one of: wallet-flow, derivatives-regime",
+            param_hint="--lane",
+        )
+
+    pipeline_executable = pipeline_allows_order(pipeline)
+    blocked_reasons = [
+        "live transport is hard-disabled in this phase",
+        "live-submit command is skeleton-only and cannot submit orders",
+        "broker and exchange calls are disabled",
+        "network/API/LLM calls are disabled",
+    ]
+    if pipeline_executable:
+        blocked_reasons.append("pipeline unexpectedly reports executable state")
+    required_next_gates = [
+        "Keep golden evaluations passing.",
+        "Keep wallet-flow and derivatives-regime lanes non-executable until explicit future gates are approved.",
+        "Implement explicit live transport adapter with separate approval and safety validation phase.",
+    ]
+
+    payload = {
+        "ok": True,
+        "source": "signalcourt.live_submit",
+        "command": "live-submit",
+        "transport_status": "LIVE_TRANSPORT_DISABLED",
+        "live_submit_available": False,
+        "lane": lane_label,
+        "run_id": f"{lane_label}:live_submit_skeleton_v1",
+        "approval_packet_id": approval_packet_id,
+        "symbol": symbol,
+        "side": side,
+        "quantity": float(quantity),
+        "limit_price": float(limit_price),
+        "notional_usd": float(notional_usd),
+        "venue": venue,
+        "order_type": order_type,
+        "blocked_reasons": blocked_reasons,
+        "required_next_gates": required_next_gates,
+        "pipeline_allows_order": pipeline_executable,
+        "order_submitted": False,
+        "broker_call_performed": False,
+        "exchange_call_performed": False,
+        "micro_live_execution_allowed": False,
+        "live_execution_allowed": False,
+        "non_authorization_notice": (
+            "SignalCourt live-submit is hard-disabled in this phase. "
+            "No order submission, broker call, exchange call, API/LLM call, or live execution is authorized."
+        ),
+        "safety_metadata": {
+            "execution_performed": False,
+            "broker_call_performed": False,
+            "exchange_call_performed": False,
+            "live_order_submitted": False,
+            "paper_order_submitted": False,
+            "artifact_written": False,
+            "ingestion_run": False,
+            "live_transport_disabled": True,
+            "live_submit_command_available": False,
+        },
+    }
+    typer.echo(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+
+
 @ingest_app.command("gamma-events")
 def ingest_gamma_events(
     limit: int = typer.Option(500, help="Number of events to fetch in this run."),
