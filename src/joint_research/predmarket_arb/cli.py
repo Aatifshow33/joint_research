@@ -112,13 +112,12 @@ def _load_live_quotes(
     event_time_ns: int,
 ) -> tuple[list[BinaryMarketQuote], list[BinaryMarketQuote]]:  # pragma: no cover
     from joint_research.predmarket_arb.kalshi_client import fetch_kalshi_markets
+    from joint_research.predmarket_arb.polymarket_quotes import fetch_polymarket_markets
 
     kalshi_payloads = fetch_kalshi_markets()
+    polymarket_payloads = fetch_polymarket_markets()
     quotes_a = project_kalshi_markets(kalshi_payloads, event_time_ns=event_time_ns)
-    # Polymarket live fetch is intentionally left to the warehouse ingest path;
-    # without it, the live scan runs Kalshi-only and reports zero matches rather
-    # than guessing at an endpoint shape.
-    quotes_b: list[BinaryMarketQuote] = []
+    quotes_b = project_polymarket_markets(polymarket_payloads, event_time_ns=event_time_ns)
     return quotes_a, quotes_b
 
 

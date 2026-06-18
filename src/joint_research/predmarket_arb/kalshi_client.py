@@ -1,12 +1,20 @@
 """Kalshi market quotes.
 
-Kalshi's public ``/trade-api/v2/markets`` endpoint returns prices in **cents**
-(integer 1..99). To buy YES you pay ``yes_ask``; to buy NO you pay ``no_ask``.
-``*_ask`` of 0 means "no resting offer", which we treat as unavailable.
+Kalshi's public API exposes prices as dollar strings in the ``*_dollars`` fields
+(e.g. ``yes_ask_dollars: "0.18"``) and resting depth in the ``*_size_fp`` fields.
+Older payloads used integer **cents** in ``yes_ask``/``no_ask``; the projection
+accepts both so fixtures and live data share one code path. To buy YES you pay
+``yes_ask``; to buy NO you pay ``no_ask``. A zero/absent ask means "no resting
+offer", which we treat as unavailable.
 
-The payload projection (``project_kalshi_market``) is pure and unit-tested. The
-network fetch (``fetch_kalshi_markets``) is a thin wrapper kept out of the
-tested path so the economics never depend on a live endpoint.
+The liquid, tradeable markets (Politics, Elections, Financials, Economics, …)
+live under *events*; the flat ``/markets`` feed is dominated by auto-generated
+sports parlays, so the live fetch pages the ``/events`` endpoint with nested
+markets. ``liquidity_dollars`` is frequently ``0`` even on two-sided markets, so
+usability is judged by real asks and ask depth, not that field.
+
+Payload projection is pure and unit-tested; only ``fetch_kalshi_markets`` and
+``fetch_kalshi_event_markets`` touch the network.
 """
 
 from __future__ import annotations
@@ -16,6 +24,7 @@ from typing import Any
 from joint_research.predmarket_arb.types import BinaryMarketQuote
 
 KALSHI_MARKETS_URL = "https://api.elections.kalshi.com/trade-api/v2/markets"
+KALSHI_EVENTS_URL = "https://api.elections.kalshi.com/trade-api/v2/events"
 
 
 def project_kalshi_market(
@@ -25,8 +34,8 @@ def project_kalshi_market(
 ) -> BinaryMarketQuote | None:
     """Project one Kalshi market payload into a quote, or ``None`` if unusable.
 
-    A market is unusable for arb if it is not open, has no ticker, or has no
-    two-sided offer (one of the asks is missing/zero).
+    Unusable for arb if it is not open, has no ticker, or lacks a two-sided
+    offer (a missing/zero ask on either side).
     """
 
     ticker = payload.get("ticker")
@@ -35,12 +44,14 @@ def project_kalshi_market(
     if str(payload.get("status", "")).lower() not in ("", "active", "open"):
         return None
 
-    yes_ask = _cents_to_dollars(payload.get("yes_ask"))
-    no_ask = _cents_to_dollars(payload.get("no_ask"))
+    yes_ask = _read_price(payload, "yes_ask")
+    no_ask = _read_price(payload, "no_ask")
     if yes_ask is None or no_ask is None or yes_ask <= 0.0 or no_ask <= 0.0:
         return None
+    if yes_ask >= 1.0 or no_ask >= 1.0:
+        return None
 
-    title = _first_str(payload, ("title", "subtitle", "yes_sub_title")) or ticker
+    title = _first_str(payload, ("title", "yes_sub_title", "subtitle")) or ticker
 
     return BinaryMarketQuote(
         venue="kalshi",
@@ -48,8 +59,8 @@ def project_kalshi_market(
         title=title,
         yes_ask=yes_ask,
         no_ask=no_ask,
-        yes_size=_optional_int(payload.get("yes_ask_size")) or _default_size(),
-        no_size=_optional_int(payload.get("no_ask_size")) or _default_size(),
+        yes_size=_read_size(payload, "yes_ask"),
+        no_size=_read_size(payload, "no_ask"),
         event_time_ns=event_time_ns,
     )
 
@@ -67,44 +78,72 @@ def project_kalshi_markets(
     return quotes
 
 
-def fetch_kalshi_markets(
+def fetch_kalshi_event_markets(
     *,
-    limit: int = 200,
-    status: str = "open",
-    timeout_seconds: float = 20.0,
+    max_pages: int = 30,
+    page_limit: int = 200,
+    timeout_seconds: float = 30.0,
 ) -> list[dict[str, Any]]:  # pragma: no cover - thin network wrapper
-    """Fetch open Kalshi markets. Imported lazily so offline tests stay clean."""
+    """Page open events with nested markets and flatten to market payloads."""
     import httpx
 
-    params = {"limit": str(limit), "status": status}
+    markets: list[dict[str, Any]] = []
+    cursor: str | None = None
     with httpx.Client(timeout=timeout_seconds) as client:
-        response = client.get(KALSHI_MARKETS_URL, params=params)
-        response.raise_for_status()
-        body = response.json()
-    markets = body.get("markets")
-    return list(markets) if isinstance(markets, list) else []
+        for _ in range(max_pages):
+            params = {
+                "limit": str(page_limit),
+                "status": "open",
+                "with_nested_markets": "true",
+            }
+            if cursor:
+                params["cursor"] = cursor
+            response = client.get(KALSHI_EVENTS_URL, params=params)
+            response.raise_for_status()
+            body = response.json()
+            for event in body.get("events", []):
+                for market in event.get("markets", []):
+                    markets.append(market)
+            cursor = body.get("cursor")
+            if not cursor:
+                break
+    return markets
 
 
-def _cents_to_dollars(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        cents = float(value)
-    except (TypeError, ValueError):
-        return None
-    if cents < 0:
+def fetch_kalshi_markets(
+    *,
+    timeout_seconds: float = 25.0,
+) -> list[dict[str, Any]]:  # pragma: no cover - thin network wrapper
+    """Fetch usable open Kalshi markets (via the events endpoint)."""
+    return fetch_kalshi_event_markets(timeout_seconds=timeout_seconds)
+
+
+def _read_price(payload: dict[str, Any], side: str) -> float | None:
+    """Prefer the dollar field; fall back to the legacy cents field."""
+    dollars = _optional_float(payload.get(f"{side}_dollars"))
+    if dollars is not None:
+        return dollars if dollars >= 0 else None
+    cents = _optional_float(payload.get(side))
+    if cents is None or cents < 0:
         return None
     return cents / 100.0
 
 
-def _optional_int(value: Any) -> int | None:
+def _read_size(payload: dict[str, Any], side: str) -> int:
+    for key in (f"{side}_size_fp", f"{side}_size"):
+        value = _optional_float(payload.get(key))
+        if value is not None and value >= 0:
+            return int(value)
+    return _default_size()
+
+
+def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
     try:
-        result = int(value)
+        return float(value)
     except (TypeError, ValueError):
         return None
-    return result if result >= 0 else None
 
 
 def _first_str(payload: dict[str, Any], keys: tuple[str, ...]) -> str | None:
@@ -116,6 +155,6 @@ def _first_str(payload: dict[str, Any], keys: tuple[str, ...]) -> str | None:
 
 
 def _default_size() -> int:
-    # When the venue omits depth we assume a single contract is available so
-    # liquidity never silently inflates a phantom fill.
+    # When depth is absent we assume a single contract so a phantom fill never
+    # silently inflates available size.
     return 1

@@ -210,17 +210,25 @@ def _render_markdown(result: ScanResult) -> str:
 
     lines += [
         "",
+        "> ⚠️ **Do not trade `token_overlap` (unverified) matches blind.** A high",
+        "> title similarity does not guarantee the two venues resolve the question",
+        "> by the same criteria, source, and date — a mismatch turns a \"risk-free\"",
+        "> pair into directional risk. Confirm resolution rules per market and move",
+        "> it into the trusted `--manual-map` before risking capital.",
+        "",
         "## Top opportunities by net edge per pair",
         "",
-        "| market_key | net_edge/pair | contracts | capital | net_profit | "
+        "| market | match | net_edge/pair | contracts | capital | net_profit | "
         "reason |",
-        "| --- | ---: | ---: | ---: | ---: | --- |",
+        "| --- | --- | ---: | ---: | ---: | ---: | --- |",
     ]
-    for row in result.rows[:15]:
+    for row in result.rows[:20]:
+        verified = "verified" if row.match_method == "manual_map" else "UNVERIFIED"
+        title = row.title[:48].replace("|", "/")
         lines.append(
-            f"| {row.market_key} | {row.net_edge_per_pair:.4f} | {row.contracts} | "
-            f"${row.capital_required_usd:.2f} | ${row.net_profit_usd:.2f} | "
-            f"{row.reason_code} |"
+            f"| {title} | {verified} | {row.net_edge_per_pair:.4f} | "
+            f"{row.contracts} | ${row.capital_required_usd:.2f} | "
+            f"${row.net_profit_usd:.2f} | {row.reason_code} |"
         )
     lines.append("")
     return "\n".join(lines)

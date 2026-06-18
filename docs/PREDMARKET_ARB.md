@@ -47,11 +47,43 @@ predmarket-arb scan \
 python -m joint_research.predmarket_arb.cli scan --fixtures-dir tests/fixtures/predmarket_arb
 ```
 
-Live (Kalshi fetch; Polymarket left to the warehouse ingest path):
+Live (fetches both venues over the network):
 
 ```bash
-predmarket-arb scan --live --bankroll 200
+predmarket-arb scan --live --bankroll 200 --min-profit 0.25
 ```
+
+Live sourcing notes:
+* **Kalshi** — the flat `/markets` feed is mostly auto-generated sports parlays,
+  so the live fetch pages the `/events` endpoint with nested markets and keeps
+  only two-sided binary markets with real asks (~28k usable markets).
+* **Polymarket** — Gamma `/markets` ordered by liquidity; prices use top-of-book
+  `bestAsk` (YES) and `1 - bestBid` (NO), falling back to `outcomePrices` marks.
+  Gamma caps deep pagination with a 422, which the fetcher treats as end-of-list.
+
+### First real result (2026-06-18)
+
+A live scan over **~28,800 Kalshi × ~816 Polymarket** quotes matched 43 markets
+(title-overlap ≥ 0.75) and found genuine, fee-survivable, $200-fillable arbs —
+e.g. *"Will ChatGPT be Time Person of the Year in 2026?"* (verified 1.00 match):
+~198 contracts, ~$191 capital, **~$6.89 modeled net profit (3.5% net edge)** in a
+single snapshot. Most other real matches sat just under the fee threshold or were
+depth-capped to a few contracts. Takeaways: the edge is real but **small in
+dollar terms at $200**, **depth- and fee-constrained**, and only worth trading on
+**resolution-verified** matches.
+
+## Operating model (how this makes money)
+
+1. **Scan continuously**, not once — these markets reprice all day; dislocations
+   appear and close. Run on a schedule and alert on actionable rows.
+2. **Verify before trading.** Promote each profitable auto-match into the trusted
+   `--manual-map` only after confirming both venues resolve the *same* question by
+   the same source, criteria, and date. Never trade a `token_overlap` row blind.
+3. **Confirm real depth** on both books before sizing (see limits below).
+4. **Execution stays manual / gated.** This layer never places orders; you (or a
+   later, explicitly-gated execution module) place the paired legs near-simultaneously.
+5. **Scale with capital.** Per-opportunity dollar profit scales ~linearly with
+   bankroll until venue depth binds; $200 harvests dollars, not hundreds.
 
 Artifacts are written to `artifacts/research/predmarket_arb/`:
 `predmarket_arb_scan.json`, `predmarket_arb_scan.csv`, `predmarket_arb_summary.md`.
@@ -89,5 +121,6 @@ artifacts measure near-misses too:
   `{kalshi_key: polymarket_key}` JSON) for anything that would see capital.
 * **Single snapshot, no execution / leg-risk model.** Spreads can close between
   the two fills; this layer measures opportunity frequency, not realized fills.
-* **Kalshi-only live fetch.** The live Polymarket side is intentionally routed
-  through the warehouse ingest path rather than a guessed endpoint shape.
+* **Resolution-criteria risk is the big one.** A 1.00 title match is not proof
+  the two venues settle identically (source, cutoff, edge cases). This is what
+  turns a "risk-free" pair into directional risk — verify per market.

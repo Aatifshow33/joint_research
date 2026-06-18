@@ -35,9 +35,20 @@ def project_polymarket_market(
     if payload.get("closed") is True or payload.get("active") is False:
         return None
 
-    prices = _parse_string_list_as_floats(payload.get("outcomePrices"))
-    outcomes = [str(item) for item in _parse_string_list(payload.get("outcomes"))]
-    yes_ask, no_ask = _yes_no_from_outcomes(outcomes, prices)
+    # Execution-realistic asks come from the top of book: ``bestAsk`` is the
+    # price to buy YES, and ``1 - bestBid`` is the price to buy NO (NO ask is
+    # the mirror of the YES bid). Fall back to the mid/last ``outcomePrices``
+    # marks only when the book fields are absent.
+    yes_ask = _optional_float(payload.get("bestAsk"))
+    best_bid = _optional_float(payload.get("bestBid"))
+    no_ask = round(1.0 - best_bid, 6) if best_bid is not None else None
+    if yes_ask is None or no_ask is None:
+        prices = _parse_string_list_as_floats(payload.get("outcomePrices"))
+        outcomes = [str(item) for item in _parse_string_list(payload.get("outcomes"))]
+        mark_yes, mark_no = _yes_no_from_outcomes(outcomes, prices)
+        yes_ask = yes_ask if yes_ask is not None else mark_yes
+        if no_ask is None:
+            no_ask = mark_no
     if yes_ask is None:
         return None
     if no_ask is None:
@@ -157,9 +168,58 @@ def _size_from_liquidity(payload: dict[str, Any]) -> int:
     return _DEFAULT_SIZE
 
 
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _first_str(payload: dict[str, Any], keys: tuple[str, ...]) -> str | None:
     for key in keys:
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+GAMMA_MARKETS_URL = "https://gamma-api.polymarket.com/markets"
+
+
+def fetch_polymarket_markets(
+    *,
+    max_pages: int = 15,
+    page_limit: int = 200,
+    min_liquidity_usd: float = 300.0,
+    timeout_seconds: float = 30.0,
+) -> list[dict[str, Any]]:  # pragma: no cover - thin network wrapper
+    """Fetch active, reasonably liquid Polymarket markets from Gamma."""
+    import httpx
+
+    markets: list[dict[str, Any]] = []
+    with httpx.Client(timeout=timeout_seconds) as client:
+        for page in range(max_pages):
+            params = {
+                "limit": str(page_limit),
+                "offset": str(page * page_limit),
+                "closed": "false",
+                "active": "true",
+                "order": "liquidity",
+                "ascending": "false",
+            }
+            response = client.get(GAMMA_MARKETS_URL, params=params)
+            # Gamma caps deep pagination with a 422; treat any client error as
+            # "no more pages" rather than failing the whole scan.
+            if response.status_code >= 400:
+                break
+            body = response.json()
+            page_markets = body if isinstance(body, list) else body.get("data", [])
+            if not page_markets:
+                break
+            for market in page_markets:
+                liquidity = _optional_float(market.get("liquidity")) or 0.0
+                if liquidity >= min_liquidity_usd:
+                    markets.append(market)
+    return markets
