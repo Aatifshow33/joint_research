@@ -1,0 +1,36 @@
+[
+  {
+    "ticker": "BTC-100K-20261231",
+    "title": "Bitcoin above $100,000 on Dec 31 2026",
+    "status": "active",
+    "yes_ask": 58,
+    "no_ask": 43,
+    "yes_ask_size": 800,
+    "no_ask_size": 800
+  },
+  {
+    "ticker": "ETH-5K-20261231",
+    "title": "Ethereum above $5,000 on Dec 31 2026",
+    "status": "active",
+    "yes_ask": 70,
+    "no_ask": 31,
+    "yes_ask_size": 400,
+    "no_ask_size": 400
+  },
+  {
+    "ticker": "FED-CUT-2026",
+    "title": "Fed cuts rates in 2026",
+    "status": "active",
+    "yes_ask": 50,
+    "no_ask": 51,
+    "yes_ask_size": 100,
+    "no_ask_size": 100
+  },
+  {
+    "ticker": "CLOSED-MKT",
+    "title": "Closed market should be dropped",
+    "status": "closed",
+    "yes_ask": 10,
+    "no_ask": 91
+  }
+]

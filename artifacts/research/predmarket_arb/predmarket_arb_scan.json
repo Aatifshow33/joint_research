@@ -1,0 +1,52 @@
+{
+  "actionable_count": 1,
+  "generated_at_iso": "2026-06-18T23:26:30.122437+00:00",
+  "matched_count": 2,
+  "quotes_a_count": 3,
+  "quotes_b_count": 2,
+  "reason_counts": {
+    "actionable": 1,
+    "negative_gross_edge": 1
+  },
+  "rows": [
+    {
+      "capital_required_usd": 199.93,
+      "contracts": 236,
+      "direction": "yes_b_no_a",
+      "fee_per_pair": 0.017161,
+      "gross_edge_per_pair": 0.17,
+      "is_actionable": true,
+      "market_key": "BTC-100K-20261231|0xbtc100k",
+      "match_method": "token_overlap",
+      "net_edge_per_pair": 0.152839,
+      "net_profit_usd": 36.07,
+      "no_ask": 0.43,
+      "reason_code": "actionable",
+      "similarity": 0.75,
+      "title": "Bitcoin above $100,000 on Dec 31 2026",
+      "venue_no": "kalshi",
+      "venue_yes": "polymarket",
+      "yes_ask": 0.4
+    },
+    {
+      "capital_required_usd": 0.0,
+      "contracts": 0,
+      "direction": "yes_b_no_a",
+      "fee_per_pair": 0.0,
+      "gross_edge_per_pair": 0.0,
+      "is_actionable": false,
+      "market_key": "ETH-5K-20261231|0xeth5k",
+      "match_method": "token_overlap",
+      "net_edge_per_pair": 0.0,
+      "net_profit_usd": 0.0,
+      "no_ask": 0.31,
+      "reason_code": "negative_gross_edge",
+      "similarity": 0.75,
+      "title": "Ethereum above $5,000 on Dec 31 2026",
+      "venue_no": "kalshi",
+      "venue_yes": "polymarket",
+      "yes_ask": 0.69
+    }
+  ],
+  "total_actionable_profit_usd": 36.07
+}
