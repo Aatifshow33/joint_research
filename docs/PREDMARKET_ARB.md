@@ -99,6 +99,30 @@ and each is tagged `✅VERIFIED` or `⚠️UNVERIFIED`.
    `resolution_verified: true`. Only verified entries feed the trusted match map
    and earn the `✅VERIFIED` tag.
 
+## Scheduled continuous operation (macOS launchd)
+
+A launchd agent runs the watch pass every 5 minutes, logs each pass, and pops a
+desktop notification **only** when a verified-resolution arb is actionable.
+
+- runner: [`scripts/run_predmarket_watch.sh`](../scripts/run_predmarket_watch.sh)
+- agent: `~/Library/LaunchAgents/com.joint-research.predmarket-watch.plist`
+- run log: `artifacts/research/predmarket_arb/watch_runs.log`
+- alert log: `artifacts/research/predmarket_arb/alerts.jsonl`
+
+```bash
+# install / start
+launchctl load  ~/Library/LaunchAgents/com.joint-research.predmarket-watch.plist
+# stop (pause)
+launchctl unload ~/Library/LaunchAgents/com.joint-research.predmarket-watch.plist
+# status (last-exit code should be 0)
+launchctl list | grep predmarket
+# watch it work
+tail -f artifacts/research/predmarket_arb/watch_runs.log
+```
+
+Notifications fire only on `✅VERIFIED` actionable opportunities (the grep
+excludes `⚠️UNVERIFIED`). The agent only runs while the machine is awake.
+
 ## Operating model (how this makes money)
 
 1. **Scan continuously**, not once — these markets reprice all day; dislocations
