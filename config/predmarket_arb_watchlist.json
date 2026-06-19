@@ -1,0 +1,82 @@
+[
+  {
+    "kalshi_ticker": "KXBRPRES1R-26OCT04-LSIL",
+    "notes": "REJECT: Polymarket is a margin-of-victory bracket market; Kalshi is binary 'Lula wins round 1'. Different questions, not an arb.",
+    "polymarket_key": "0xd99603add7350a5ff33c8dc609ab0eaae2d5d18162bb00eeb63c38c81ae038f8",
+    "resolution_verified": false,
+    "tags": [
+      "rejected"
+    ],
+    "title": "Will Luiz In\u00e1cio Lula da Silva win the first round of the 2026 Brazilian presidential election?"
+  },
+  {
+    "kalshi_ticker": "KXTIME-26-GPT",
+    "notes": "HOLD: base case (ChatGPT explicitly named TIME POY 2026) matches, but non-person entity + differing concept/association wording could diverge. Divergence = total position loss vs 3.5% edge. Confirm AI-naming treatment before verifying.",
+    "polymarket_key": "0xea4ed38f531f9786dfd1e157d7f17c659077b0082aefec46ad5fb37b777e16f0",
+    "resolution_verified": false,
+    "tags": [
+      "hold"
+    ],
+    "title": "Will ChatGPT be Time Person of the Year in 2026?"
+  },
+  {
+    "kalshi_ticker": "KXPUTINZELENSKYYLOCATION-28-RUS",
+    "notes": "REJECT: deadline mismatch (Kalshi Dec-31-2028 vs Polymarket Dec-31-2026); Polymarket counts Crimea/Russia-controlled territory as Russia. Different markets.",
+    "polymarket_key": "0x6e003c15210b25e867931fdf51d3c2de23d4d9b17c69f7e1701ba45aa871f4b5",
+    "resolution_verified": false,
+    "tags": [
+      "rejected"
+    ],
+    "title": "Will Putin and Zelenskyy meet next in Russia?"
+  },
+  {
+    "kalshi_ticker": "KXNEXTROMANIAPM-45JAN01-ANAZ",
+    "notes": "REJECT: resolutions differ on interim/caretaker PMs (Polymarket requires parliamentary confidence vote; Kalshi 'first new person to hold PM') and deadline. Divergence risk.",
+    "polymarket_key": "0xabc341cc5fefcc1611837576594d131336784fa96210008da4e2004123917a84",
+    "resolution_verified": false,
+    "tags": [
+      "rejected"
+    ],
+    "title": "Will Alexandru Nazare be the next Prime Minister of Romania?"
+  },
+  {
+    "kalshi_ticker": "KXLAPRIMARY-05R26-MMEB",
+    "notes": "VERIFIED 2026-06-18: both resolve to the 2026 LA-05 Republican nominee; same criterion and source. Clean match.",
+    "polymarket_key": "0x4114456cd498aba2e45a6a1c14cc7f048c74556adaa6ad06c5ef4428f751f9ed",
+    "resolution_verified": true,
+    "tags": [
+      "verified"
+    ],
+    "title": "Will Michael Mebruer be the Republican nominee for LA-05?"
+  },
+  {
+    "kalshi_ticker": "KXTIME-26-JAM",
+    "notes": "VERIFIED 2026-06-18: natural person; both resolve YES iff explicitly named TIME Person of the Year 2026. Identical resolution.",
+    "polymarket_key": "0xa55aba6f5c78f51112da71f57888efba75e85840a9afafe42ab9f3dedf8fc338",
+    "resolution_verified": true,
+    "tags": [
+      "verified"
+    ],
+    "title": "Will James Talarico be Time Person of the Year in 2026?"
+  },
+  {
+    "kalshi_ticker": "KXTIME-26-TS",
+    "notes": "VERIFIED 2026-06-18: natural person; both resolve YES iff explicitly named TIME Person of the Year 2026. Identical resolution.",
+    "polymarket_key": "0xa44f29126cefb6c4f51b98043e94faec39e90d1e12d0eb310937b6c81e3fa869",
+    "resolution_verified": true,
+    "tags": [
+      "verified"
+    ],
+    "title": "Will Taylor Swift be Time Person of the Year in 2026?"
+  },
+  {
+    "kalshi_ticker": "KXTIME-26-BAD",
+    "notes": "VERIFIED 2026-06-18: natural person; both resolve YES iff explicitly named TIME Person of the Year 2026. Identical resolution.",
+    "polymarket_key": "0x7a00fdfd7dbd9384392369dcc2d4a304b47876371b41d779059e47644155b246",
+    "resolution_verified": true,
+    "tags": [
+      "verified"
+    ],
+    "title": "Will Bad Bunny be Time Person of the Year in 2026?"
+  }
+]

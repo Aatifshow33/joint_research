@@ -1,0 +1,26 @@
+[
+  {
+    "conditionId": "0xbtc100k",
+    "question": "Will Bitcoin be above $100,000 on December 31, 2026?",
+    "active": true,
+    "closed": false,
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.40\", \"0.60\"]"
+  },
+  {
+    "conditionId": "0xeth5k",
+    "question": "Will Ethereum be above $5,000 on December 31, 2026?",
+    "active": true,
+    "closed": false,
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.69\", \"0.31\"]"
+  },
+  {
+    "conditionId": "0xclosed",
+    "question": "Will this closed market be above $5,000 on December 31, 2026?",
+    "active": false,
+    "closed": true,
+    "outcomes": "[\"Yes\", \"No\"]",
+    "outcomePrices": "[\"0.50\", \"0.50\"]"
+  }
+]
