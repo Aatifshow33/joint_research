@@ -1,0 +1,138 @@
+
+================================================================================
+[1] Will Luiz Inácio Lula da Silva win the first round of the 2026 Brazilian presidential election?
+   kalshi=KXBRPRES1R-26OCT04-LSIL  poly=0xd99603add7350a5ff33c8d
+--- KALSHI RULES ---
+If Luiz Inácio Lula da Silva wins the first round of the 2026 Brazilian presidential election, then the market resolves to Yes.
+--- POLYMARKET RULES ---
+A presidential election is scheduled to take place in Brazil on October 4, 2026.
+
+This market will resolve according to the margin of victory between the top two candidates in the first round of the next Brazil Presidential Election.
+
+For the purpose of this market, the “margin of victory” is defined as the absolute difference between the percentages of valid votes received by the first- and second-place candidates. Percentages of the valid votes received by each candidate will be determined by dividing the total number of valid votes each of the top two candidates receives by the sum of all valid votes cast in the election.
+
+If the reported value falls exactly between two brackets, then thi
+
+================================================================================
+[2] Will ChatGPT be Time Person of the Year in 2026?
+   kalshi=KXTIME-26-GPT  poly=0xea4ed38f531f9786dfd1e1
+--- KALSHI RULES ---
+If ChatGPT is Time Person of the Year for 2026, then the market resolves to Yes.
+
+This will count towards the payout criterion: 
+If multiple persons win, all persons that are listed are encompassed within the Payout Criterion. If, for example, the Person of the Year is “Joe Biden and Kamala Harris”, both “Joe Biden” and “Kamala Harris” strikes are encompassed within the Payout Criterion. 
+The person must be explicitly named as the Person of the Year or pictured on the/a relevant cover if they are associated with the group/concept winning (the picture is only relevant for a natural human being winning). Some examples to illustrate this: “Jamal Khasogghi” would resolve to Yes in 2018, when “Th
+--- POLYMARKET RULES ---
+This market will resolve to “Yes” if the listed person, group, entity, or thing is TIME Person of the Year for 2026. Otherwise, this market will resolve to “No”.
+
+A listed option will be considered TIME Person of the Year if they/it are explicitly named as Person of the Year. 
+
+Additionally, the following rules apply:
+
+If multiple people are explicitly named person of the year, both people will be considered TIME Person of the Year.
+
+If the TIME Person of the Year is a concept, group or thing, a person may still be considered Person of the Year if they are also explicitly named person of the year, or if they are directly associated with the concept, group or thing named as person of the Year
+
+================================================================================
+[3] Will Putin and Zelenskyy meet next in Russia?
+   kalshi=KXPUTINZELENSKYYLOCATION-28-RUS  poly=0x6e003c15210b25e867931f
+--- KALSHI RULES ---
+If the next Putin and Zelenskyy meeting happens in Russia before Dec 31, 2028, then the market resolves to Yes.
+--- POLYMARKET RULES ---
+This market will resolve according to the location of the next meeting between Volodymyr Zelenskyy and Vladimir Putin by December 31, 2026, 11:59 PM ET. If no meeting takes place by December 31 ET, this market will resolve to "No meeting before 2027".
+
+A meeting is defined as any encounter where Zelenskyy and Putin are both present and interact with each other in person.
+
+For the purpose of this market, a meeting held on Ukrainian territory under the de facto control of Russia (e.g., Crimea) will be considered part of Russia.
+
+The primary resolution source for this market will be a consensus of credible reporting.
+
+================================================================================
+[4] Will Alexandru Nazare be the next Prime Minister of Romania?
+   kalshi=KXNEXTROMANIAPM-45JAN01-ANAZ  poly=0xabc341cc5fefcc16118375
+--- KALSHI RULES ---
+If the first new person to hold Prime Minister of Romania after Issuance is Alexandru Nazare, then the market resolves to Yes.
+--- POLYMARKET RULES ---
+This market will resolve to the next individual who officially assumes the office of Prime Minister of Romania by December 31, 2027, 11:59 PM ET.
+
+To count for resolution, the individual must be formally appointed by the President of Romania and receive a vote of confidence from Parliament, resulting in the official formation of a new government. Any interim or caretaker Prime Minister who does not receive a parliamentary vote of confidence will not count toward the resolution of this market.
+
+If no such Prime Minister takes office by December 31, 2027, 11:59 PM ET, this market will resolve to “Other”.
+
+The primary resolution source for this market will be official information from the Gover
+
+================================================================================
+[5] Will Michael Mebruer be the Republican nominee for LA-05?
+   kalshi=KXLAPRIMARY-05R26-MMEB  poly=0x4114456cd498aba2e45a6a
+--- KALSHI RULES ---
+If Michael Mebruer wins the nomination for the Republican Party to contest the 2026 LA-05 House seat, then the market resolves to Yes.
+--- POLYMARKET RULES ---
+This market will resolve according to the candidate who wins the nomination for the Republican Party to contest the LA-05 congressional district seat in the U.S. House of Representatives in the 2026 midterm elections. The Republican primary will take place on May 16, 2026.
+
+If no nominee is announced by November 3, 2026, 11:59PM ET, this market will resolve to "Other".
+
+The resolution source for this market will be a consensus of official Republican sources, including https://www.rnc.org/.
+
+Any replacement of the nominee before election day will not change the resolution of the market.
+
+================================================================================
+[6] Will James Talarico be Time Person of the Year in 2026?
+   kalshi=KXTIME-26-JAM  poly=0xa55aba6f5c78f51112da71
+--- KALSHI RULES ---
+If James Talarico is Time Person of the Year for 2026, then the market resolves to Yes.
+
+This will count towards the payout criterion: 
+If multiple persons win, all persons that are listed are encompassed within the Payout Criterion. If, for example, the Person of the Year is “Joe Biden and Kamala Harris”, both “Joe Biden” and “Kamala Harris” strikes are encompassed within the Payout Criterion. 
+The person must be explicitly named as the Person of the Year or pictured on the/a relevant cover if they are associated with the group/concept winning (the picture is only relevant for a natural human being winning). Some examples to illustrate this: “Jamal Khasogghi” would resolve to Yes in 2018, w
+--- POLYMARKET RULES ---
+This market will resolve to “Yes” if the listed person, group, entity, or thing is TIME Person of the Year for 2026. Otherwise, this market will resolve to “No”.
+
+A listed option will be considered TIME Person of the Year if they/it are explicitly named as Person of the Year. 
+
+Additionally, the following rules apply:
+
+If multiple people are explicitly named person of the year, both people will be considered TIME Person of the Year.
+
+If the TIME Person of the Year is a concept, group or thing, a person may still be considered Person of the Year if they are also explicitly named person of the year, or if they are directly associated with the concept, group or thing named as person of the Year
+
+================================================================================
+[7] Will Taylor Swift be Time Person of the Year in 2026?
+   kalshi=KXTIME-26-TS  poly=0xa44f29126cefb6c4f51b98
+--- KALSHI RULES ---
+If Taylor Swift is Time Person of the Year for 2026, then the market resolves to Yes.
+
+This will count towards the payout criterion: 
+If multiple persons win, all persons that are listed are encompassed within the Payout Criterion. If, for example, the Person of the Year is “Joe Biden and Kamala Harris”, both “Joe Biden” and “Kamala Harris” strikes are encompassed within the Payout Criterion. 
+The person must be explicitly named as the Person of the Year or pictured on the/a relevant cover if they are associated with the group/concept winning (the picture is only relevant for a natural human being winning). Some examples to illustrate this: “Jamal Khasogghi” would resolve to Yes in 2018, whe
+--- POLYMARKET RULES ---
+This market will resolve to “Yes” if the listed person, group, entity, or thing is TIME Person of the Year for 2026. Otherwise, this market will resolve to “No”.
+
+A listed option will be considered TIME Person of the Year if they/it are explicitly named as Person of the Year. 
+
+Additionally, the following rules apply:
+
+If multiple people are explicitly named person of the year, both people will be considered TIME Person of the Year.
+
+If the TIME Person of the Year is a concept, group or thing, a person may still be considered Person of the Year if they are also explicitly named person of the year, or if they are directly associated with the concept, group or thing named as person of the Year
+
+================================================================================
+[8] Will Bad Bunny be Time Person of the Year in 2026?
+   kalshi=KXTIME-26-BAD  poly=0x7a00fdfd7dbd9384392369
+--- KALSHI RULES ---
+If Bad Bunny is Time Person of the Year for 2026, then the market resolves to Yes.
+
+This will count towards the payout criterion: 
+If multiple persons win, all persons that are listed are encompassed within the Payout Criterion. If, for example, the Person of the Year is “Joe Biden and Kamala Harris”, both “Joe Biden” and “Kamala Harris” strikes are encompassed within the Payout Criterion. 
+The person must be explicitly named as the Person of the Year or pictured on the/a relevant cover if they are associated with the group/concept winning (the picture is only relevant for a natural human being winning). Some examples to illustrate this: “Jamal Khasogghi” would resolve to Yes in 2018, when “
+--- POLYMARKET RULES ---
+This market will resolve to “Yes” if the listed person, group, entity, or thing is TIME Person of the Year for 2026. Otherwise, this market will resolve to “No”.
+
+A listed option will be considered TIME Person of the Year if they/it are explicitly named as Person of the Year. 
+
+Additionally, the following rules apply:
+
+If multiple people are explicitly named person of the year, both people will be considered TIME Person of the Year.
+
+If the TIME Person of the Year is a concept, group or thing, a person may still be considered Person of the Year if they are also explicitly named person of the year, or if they are directly associated with the concept, group or thing named as person of the Year
+
+DONE
