@@ -31,6 +31,7 @@ dev = [
 [project.scripts]
 joint-research = "joint_research.cli:app"
 predmarket-arb = "joint_research.predmarket_arb.cli:app"
+funding-arb = "joint_research.funding_arb.cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/joint_research"]
