@@ -126,13 +126,33 @@ def match_markets(
         else:
             remaining_a.append(quote)
 
-    # Greedy best-first over all candidate token-overlap pairs.
+    # Greedy best-first over candidate token-overlap pairs. Naively this is
+    # O(|A|x|B|) Jaccards with re-tokenization each time — tens of millions of
+    # regex calls on real universes. Instead we tokenize each title once and use
+    # an inverted token->B index so each A quote only scores the B quotes that
+    # share at least one token (a match needs overlap, so non-sharing pairs are
+    # provably below threshold and can be skipped).
+    b_tokens: list[frozenset[str]] = [normalize_title(p.title) for p in quotes_b]
+    token_to_b: dict[str, list[int]] = {}
+    for index, tokens in enumerate(b_tokens):
+        for token in tokens:
+            token_to_b.setdefault(token, []).append(index)
+
     candidates: list[tuple[float, BinaryMarketQuote, BinaryMarketQuote]] = []
     for quote in remaining_a:
-        for partner in quotes_b:
-            similarity = title_similarity(quote.title, partner.title)
+        a_tokens = normalize_title(quote.title)
+        if not a_tokens:
+            continue
+        candidate_indices: set[int] = set()
+        for token in a_tokens:
+            candidate_indices.update(token_to_b.get(token, ()))
+        for index in candidate_indices:
+            partner_tokens = b_tokens[index]
+            intersection = len(a_tokens & partner_tokens)
+            union = len(a_tokens | partner_tokens)
+            similarity = intersection / union if union else 0.0
             if similarity >= min_similarity:
-                candidates.append((similarity, quote, partner))
+                candidates.append((similarity, quote, quotes_b[index]))
 
     candidates.sort(key=lambda item: (-item[0], item[1].market_key, item[2].market_key))
     used_a: set[str] = set()

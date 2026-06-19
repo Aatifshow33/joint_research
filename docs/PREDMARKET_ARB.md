@@ -72,6 +72,33 @@ depth-capped to a few contracts. Takeaways: the edge is real but **small in
 dollar terms at $200**, **depth- and fee-constrained**, and only worth trading on
 **resolution-verified** matches.
 
+## Continuous operation (`watch`) and the verified watchlist
+
+`predmarket-arb watch` runs the full live pipeline on a loop: fetch both venues →
+trust only verified watchlist pairs → re-price the top candidates with **real
+Polymarket CLOB depth** → append actionable opportunities to an alert log.
+
+```bash
+# one pass
+predmarket-arb watch --watchlist config/predmarket_arb_watchlist.json --once
+# continuous: every 3 minutes, 100 passes
+predmarket-arb watch --watchlist config/predmarket_arb_watchlist.json \
+  --interval 180 --iterations 100 --alert-log artifacts/research/predmarket_arb/alerts.jsonl
+```
+
+Alerts are JSONL (`market_key`, edge, contracts, capital, net_profit, `verified`)
+and each is tagged `✅VERIFIED` or `⚠️UNVERIFIED`.
+
+**Watchlist workflow (the safety gate):**
+
+1. A scan/watch pass surfaces auto-matched candidates (`config/predmarket_arb_watchlist.json`
+   is seeded with the first batch, all `resolution_verified: false`).
+2. Generate a review packet (Kalshi vs Polymarket resolution rules side by side)
+   via `joint_research.predmarket_arb.watchlist`.
+3. Confirm both venues resolve identically, then flip the entry to
+   `resolution_verified: true`. Only verified entries feed the trusted match map
+   and earn the `✅VERIFIED` tag.
+
 ## Operating model (how this makes money)
 
 1. **Scan continuously**, not once — these markets reprice all day; dislocations

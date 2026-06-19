@@ -1,0 +1,82 @@
+[
+  {
+    "kalshi_ticker": "KXBRPRES1R-26OCT04-LSIL",
+    "notes": "auto-found  edge=0.5130 sim=0.86; VERIFY resolution criteria before trading",
+    "polymarket_key": "0xd99603add7350a5ff33c8dc609ab0eaae2d5d18162bb00eeb63c38c81ae038f8",
+    "resolution_verified": false,
+    "tags": [
+      "auto_candidate"
+    ],
+    "title": "Will Luiz In\u00e1cio Lula da Silva win the first round of the 2026 Brazilian presidential election?"
+  },
+  {
+    "kalshi_ticker": "KXTIME-26-GPT",
+    "notes": "auto-found  edge=0.0348 sim=1.00; VERIFY resolution criteria before trading",
+    "polymarket_key": "0xea4ed38f531f9786dfd1e157d7f17c659077b0082aefec46ad5fb37b777e16f0",
+    "resolution_verified": false,
+    "tags": [
+      "auto_candidate"
+    ],
+    "title": "Will ChatGPT be Time Person of the Year in 2026?"
+  },
+  {
+    "kalshi_ticker": "KXPUTINZELENSKYYLOCATION-28-RUS",
+    "notes": "auto-found  edge=0.0210 sim=0.83; VERIFY resolution criteria before trading",
+    "polymarket_key": "0x6e003c15210b25e867931fdf51d3c2de23d4d9b17c69f7e1701ba45aa871f4b5",
+    "resolution_verified": false,
+    "tags": [
+      "auto_candidate"
+    ],
+    "title": "Will Putin and Zelenskyy meet next in Russia?"
+  },
+  {
+    "kalshi_ticker": "KXNEXTROMANIAPM-45JAN01-ANAZ",
+    "notes": "auto-found  edge=0.0200 sim=1.00; VERIFY resolution criteria before trading",
+    "polymarket_key": "0xabc341cc5fefcc1611837576594d131336784fa96210008da4e2004123917a84",
+    "resolution_verified": false,
+    "tags": [
+      "auto_candidate"
+    ],
+    "title": "Will Alexandru Nazare be the next Prime Minister of Romania?"
+  },
+  {
+    "kalshi_ticker": "KXLAPRIMARY-05R26-MMEB",
+    "notes": "auto-found  edge=0.0197 sim=1.00; VERIFY resolution criteria before trading",
+    "polymarket_key": "0x4114456cd498aba2e45a6a1c14cc7f048c74556adaa6ad06c5ef4428f751f9ed",
+    "resolution_verified": false,
+    "tags": [
+      "auto_candidate"
+    ],
+    "title": "Will Michael Mebruer be the Republican nominee for LA-05?"
+  },
+  {
+    "kalshi_ticker": "KXTIME-26-JAM",
+    "notes": "auto-found  edge=0.0137 sim=1.00; VERIFY resolution criteria before trading",
+    "polymarket_key": "0xa55aba6f5c78f51112da71f57888efba75e85840a9afafe42ab9f3dedf8fc338",
+    "resolution_verified": false,
+    "tags": [
+      "auto_candidate"
+    ],
+    "title": "Will James Talarico be Time Person of the Year in 2026?"
+  },
+  {
+    "kalshi_ticker": "KXTIME-26-TS",
+    "notes": "auto-found  edge=0.0116 sim=1.00; VERIFY resolution criteria before trading",
+    "polymarket_key": "0xa44f29126cefb6c4f51b98043e94faec39e90d1e12d0eb310937b6c81e3fa869",
+    "resolution_verified": false,
+    "tags": [
+      "auto_candidate"
+    ],
+    "title": "Will Taylor Swift be Time Person of the Year in 2026?"
+  },
+  {
+    "kalshi_ticker": "KXTIME-26-BAD",
+    "notes": "auto-found  edge=0.0098 sim=1.00; VERIFY resolution criteria before trading",
+    "polymarket_key": "0x7a00fdfd7dbd9384392369dcc2d4a304b47876371b41d779059e47644155b246",
+    "resolution_verified": false,
+    "tags": [
+      "auto_candidate"
+    ],
+    "title": "Will Bad Bunny be Time Person of the Year in 2026?"
+  }
+]

@@ -152,6 +152,72 @@ def _print_summary(result: ScanResult, paths: dict[str, Path]) -> None:
 
 
 @app.command()
+def watch(
+    watchlist_path: Path | None = typer.Option(
+        None, "--watchlist", help="JSON watchlist; only verified pairs are trusted."
+    ),
+    bankroll: float = typer.Option(200.0, "--bankroll", help="Account size in USD."),
+    min_edge: float = typer.Option(0.02, "--min-edge", help="Min net edge per pair."),
+    min_profit: float = typer.Option(
+        0.25, "--min-profit", help="Min modeled net profit (USD) to alert."
+    ),
+    min_similarity: float = typer.Option(
+        0.75, "--min-similarity", help="Min title overlap to auto-match."
+    ),
+    refine_top_n: int = typer.Option(
+        10, "--refine-top-n", help="How many top candidates to re-price with real depth."
+    ),
+    alert_log: Path | None = typer.Option(
+        None, "--alert-log", help="Append-only JSONL alert log."
+    ),
+    interval_seconds: float = typer.Option(
+        0.0, "--interval", help="Seconds between passes (0 = run once)."
+    ),
+    iterations: int = typer.Option(
+        1, "--iterations", help="Number of passes (use a high value with --interval)."
+    ),
+) -> None:
+    """Continuously scan live venues and alert on actionable opportunities."""
+    import time
+
+    from joint_research.predmarket_arb.pipeline import format_alert, run_live_once
+    from joint_research.predmarket_arb.watchlist import load_watchlist
+
+    entries = load_watchlist(watchlist_path) if watchlist_path else []
+    verified = sum(1 for e in entries if e.resolution_verified)
+    default_log = _REPO_ROOT / "artifacts" / "research" / "predmarket_arb" / "alerts.jsonl"
+    log_path = alert_log or default_log
+    config = DetectorConfig(
+        bankroll_usd=bankroll,
+        min_net_edge_per_pair=min_edge,
+        min_net_profit_usd=min_profit,
+    )
+    typer.echo(
+        f"watch: {len(entries)} watchlist entries ({verified} verified) | "
+        f"bankroll ${bankroll:.0f} | alerts -> {log_path}"
+    )
+
+    for i in range(max(1, iterations)):
+        result = run_live_once(
+            config=config,
+            watchlist_entries=entries,
+            min_similarity=min_similarity,
+            refine_top_n=refine_top_n,
+            alert_log=log_path,
+        )
+        stamp = datetime.now(UTC).strftime("%H:%M:%S")
+        actionable = [a for a in result.alerts if a.net_profit_usd >= min_profit]
+        typer.echo(
+            f"[{stamp}] pass {i + 1}/{iterations}: matched={result.matched} "
+            f"alerts={len(result.alerts)}"
+        )
+        for alert in actionable[:10]:
+            typer.echo("  " + format_alert(alert))
+        if i + 1 < iterations and interval_seconds > 0:
+            time.sleep(interval_seconds)
+
+
+@app.command()
 def version() -> None:
     """Print the detector contract version."""
     typer.echo("predmarket-arb detector v1 (detection only, no execution)")
